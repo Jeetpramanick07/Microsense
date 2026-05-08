@@ -1,0 +1,46 @@
+# Python
+backend/venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.sqlite3
+*.db
+
+# Environment files
+.env
+.env.local
+.env.production
+backend/.env
+frontend/.env
+
+# Uploads / generated files
+backend/uploads/
+backend/uploads/images/
+backend/uploads/videos/
+
+# Node / React
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS / Editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Firebase / build cache if any
+.firebase/
+.firebaserc
+
+# Optional: keep model out if too large
+# backend/model/best.pt
