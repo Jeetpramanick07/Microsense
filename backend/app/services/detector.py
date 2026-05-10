@@ -4,10 +4,11 @@ YOLOv5-based particle detection for MicroSense AI-Cam.
 This detector:
   1. Loads custom YOLOv5 model from backend/model/best.pt
   2. Fixes Windows PosixPath issue only on Windows
-  3. Runs YOLOv5 inference on uploaded images
-  4. Draws bounding boxes on detected particles
-  5. Saves processed image with prefix yolo_processed_
-  6. Returns DetectionResult compatible with samples.py and calculator.py
+  3. Prevents Torch Hub interactive prompt on Render using trust_repo=True
+  4. Runs YOLOv5 inference on uploaded images
+  5. Draws bounding boxes on detected particles
+  6. Saves processed image with prefix yolo_processed_
+  7. Returns DetectionResult compatible with samples.py and calculator.py
 
 NOTE:
 This is still a prototype estimator. YOLO detects trained particle-like objects.
@@ -81,9 +82,10 @@ def get_model():
     Some best.pt files trained on Linux/Colab contain PosixPath.
     The PosixPath patch is needed only on Windows.
 
-    Important:
-    Do NOT apply pathlib.PosixPath = pathlib.WindowsPath on Render/Linux.
-    Render runs on Linux, and that patch can break model loading.
+    Render/Linux note:
+    trust_repo=True prevents torch.hub from asking an interactive
+    trust confirmation question, which can cause:
+    EOF when reading a line
     """
     global _model
 
@@ -93,7 +95,8 @@ def get_model():
 
         print("Loading YOLOv5 model from:", MODEL_PATH)
 
-        # Apply PosixPath fix only on Windows local machine
+        # Apply PosixPath fix only on Windows local machine.
+        # Do NOT apply this on Render/Linux.
         if os.name == "nt":
             pathlib.PosixPath = pathlib.WindowsPath
 
@@ -102,8 +105,10 @@ def get_model():
             "custom",
             path=str(MODEL_PATH),
             force_reload=False,
+            trust_repo=True,
         )
 
+        # Confidence and IoU thresholds
         _model.conf = 0.25
         _model.iou = 0.45
 
