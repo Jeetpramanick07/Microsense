@@ -3,11 +3,11 @@ YOLOv5-based particle detection for MicroSense AI-Cam.
 
 This detector:
   1. Loads custom YOLOv5 model from backend/model/best.pt
-  2. Fixes Windows PosixPath issue for models trained on Linux/Colab
+  2. Fixes Windows PosixPath issue only on Windows
   3. Runs YOLOv5 inference on uploaded images
   4. Draws bounding boxes on detected particles
   5. Saves processed image with prefix yolo_processed_
-  6. Returns DetectionResult compatible with existing samples.py and calculator.py
+  6. Returns DetectionResult compatible with samples.py and calculator.py
 
 NOTE:
 This is still a prototype estimator. YOLO detects trained particle-like objects.
@@ -20,6 +20,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List
+import os
 import pathlib
 
 import cv2
@@ -76,11 +77,13 @@ def get_model():
     """
     Load YOLOv5 model only once.
 
-    Important:
-    The pathlib.PosixPath patch fixes this Windows error:
-    "cannot instantiate 'PosixPath' on your system"
+    Windows note:
+    Some best.pt files trained on Linux/Colab contain PosixPath.
+    The PosixPath patch is needed only on Windows.
 
-    This usually happens when best.pt was trained/saved on Linux or Google Colab.
+    Important:
+    Do NOT apply pathlib.PosixPath = pathlib.WindowsPath on Render/Linux.
+    Render runs on Linux, and that patch can break model loading.
     """
     global _model
 
@@ -90,8 +93,9 @@ def get_model():
 
         print("Loading YOLOv5 model from:", MODEL_PATH)
 
-        # Windows fix for YOLO models trained on Linux/Colab
-        pathlib.PosixPath = pathlib.WindowsPath
+        # Apply PosixPath fix only on Windows local machine
+        if os.name == "nt":
+            pathlib.PosixPath = pathlib.WindowsPath
 
         _model = torch.hub.load(
             "ultralytics/yolov5",
@@ -100,7 +104,6 @@ def get_model():
             force_reload=False,
         )
 
-        # Confidence and IoU thresholds
         _model.conf = 0.25
         _model.iou = 0.45
 
