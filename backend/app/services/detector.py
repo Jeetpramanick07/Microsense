@@ -7,10 +7,10 @@ Permanent fix:
 - Automatically use OpenCV fallback detection.
 - Always generate processed image.
 - Always return DetectionResult to samples.py.
+- Always calculate image quality, even when OpenCV fallback is used.
 """
 
 from __future__ import annotations
-
 
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -56,12 +56,13 @@ class Particle:
 class DetectionResult:
     particles: List[Particle] = field(default_factory=list)
     processed_image_path: str = ""
+
     laplacian_variance: float = 0.0
     mean_brightness: float = 0.0
     average_particle_area: float = 0.0
     average_brightness: float = 0.0
 
-    # New image quality fields
+    # Image quality fields
     focus_score: float = 0.0
     brightness_score: float = 0.0
     contrast_score: float = 0.0
@@ -74,6 +75,8 @@ class DetectionResult:
     @property
     def count(self) -> int:
         return len(self.particles)
+
+
 # ── Model loading ─────────────────────────────────────────────────────────────
 
 _model = None
@@ -97,6 +100,8 @@ def get_model():
 
         print("Loading YOLOv5 model from:", MODEL_PATH)
 
+        # This patch is only for Windows local development.
+        # Do not apply it on Render/Linux.
         if os.name == "nt":
             pathlib.PosixPath = pathlib.WindowsPath
 
@@ -125,6 +130,7 @@ def _size_label(area: float) -> str:
         return "100–500 µm est."
     elif area > 100:
         return "50–100 µm est."
+
     return "<50 µm est."
 
 
@@ -146,6 +152,8 @@ def _safe_crop(gray: np.ndarray, x1: int, y1: int, x2: int, y2: int) -> np.ndarr
     return gray[y1:y2, x1:x2]
 
 
+# ── OpenCV fallback detector ──────────────────────────────────────────────────
+
 def _classical_cv_detection(
     img_resized: np.ndarray,
     gray: np.ndarray,
@@ -158,18 +166,31 @@ def _classical_cv_detection(
     OpenCV fallback detector.
 
     This prevents Render from returning 500 if YOLOv5/torch.hub fails.
+    It also calculates image quality so the response does not return
+    image_quality_score = 0 and image_quality_status = Unknown.
     """
+
     print(f"WARNING: Falling back to OpenCV detector. Reason: {reason}")
+
+    # Image quality validation for OpenCV fallback path
+    quality = evaluate_image_quality(gray)
 
     clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
     enhanced = clahe.apply(gray)
     blurred = cv2.GaussianBlur(enhanced, (5, 5), 0)
 
     _, binary_light = cv2.threshold(
-        blurred, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU
+        blurred,
+        0,
+        255,
+        cv2.THRESH_BINARY + cv2.THRESH_OTSU,
     )
+
     _, binary_dark = cv2.threshold(
-        blurred, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU
+        blurred,
+        0,
+        255,
+        cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU,
     )
 
     if cv2.countNonZero(binary_light) < cv2.countNonZero(binary_dark):
@@ -181,7 +202,11 @@ def _classical_cv_detection(
     mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel, iterations=1)
     mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=1)
 
-    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    contours, _ = cv2.findContours(
+        mask,
+        cv2.RETR_EXTERNAL,
+        cv2.CHAIN_APPROX_SIMPLE,
+    )
 
     particles: List[Particle] = []
     output_img = img_resized.copy()
@@ -230,6 +255,16 @@ def _classical_cv_detection(
         2,
     )
 
+    cv2.putText(
+        output_img,
+        f"Quality: {quality.image_quality_status} ({quality.image_quality_score})",
+        (10, 55),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.6,
+        (0, 255, 0),
+        2,
+    )
+
     proc_filename = generate_unique_filename(
         Path(image_path).name,
         prefix="cv_processed_",
@@ -252,6 +287,15 @@ def _classical_cv_detection(
         mean_brightness=round(mean_brightness, 2),
         average_particle_area=round(avg_area, 2),
         average_brightness=round(avg_brightness, 2),
+
+        focus_score=quality.focus_score,
+        brightness_score=quality.brightness_score,
+        contrast_score=quality.contrast_score,
+        overexposed_percent=quality.overexposed_percent,
+        underexposed_percent=quality.underexposed_percent,
+        image_quality_score=quality.image_quality_score,
+        image_quality_status=quality.image_quality_status,
+        quality_warning=quality.quality_warning,
     )
 
 
@@ -264,10 +308,11 @@ def analyze_image(image_path: str) -> DetectionResult:
     Flow:
     1. Read image.
     2. Resize image.
-    3. Try YOLOv5 detection.
-    4. If YOLO fails, use OpenCV fallback.
-    5. Save processed image.
-    6. Return DetectionResult.
+    3. Calculate image quality.
+    4. Try YOLOv5 detection.
+    5. If YOLO fails, use OpenCV fallback.
+    6. Save processed image.
+    7. Return DetectionResult.
     """
 
     print("USING DETECTOR: YOLOv5 WITH OPENCV FALLBACK")
@@ -365,6 +410,16 @@ def analyze_image(image_path: str) -> DetectionResult:
         2,
     )
 
+    cv2.putText(
+        output_img,
+        f"Quality: {quality.image_quality_status} ({quality.image_quality_score})",
+        (10, 55),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.6,
+        (0, 255, 0),
+        2,
+    )
+
     proc_filename = generate_unique_filename(
         Path(image_path).name,
         prefix="yolo_processed_",
@@ -380,25 +435,26 @@ def analyze_image(image_path: str) -> DetectionResult:
     print("DETECTOR.PY FINAL processed_path:", proc_path)
 
     avg_area = float(np.mean([p.area for p in particles])) if particles else 0.0
-    avg_brightness = float(np.mean([p.brightness for p in particles])) if particles else 0.
+    avg_brightness = float(np.mean([p.brightness for p in particles])) if particles else 0.0
 
     return DetectionResult(
-    particles=particles,
-    processed_image_path=str(proc_path),
-    laplacian_variance=round(lap_var, 2),
-    mean_brightness=round(mean_brightness, 2),
-    average_particle_area=round(avg_area, 2),
-    average_brightness=round(avg_brightness, 2),
+        particles=particles,
+        processed_image_path=str(proc_path),
+        laplacian_variance=round(lap_var, 2),
+        mean_brightness=round(mean_brightness, 2),
+        average_particle_area=round(avg_area, 2),
+        average_brightness=round(avg_brightness, 2),
 
-    focus_score=quality.focus_score,
-    brightness_score=quality.brightness_score,
-    contrast_score=quality.contrast_score,
-    overexposed_percent=quality.overexposed_percent,
-    underexposed_percent=quality.underexposed_percent,
-    image_quality_score=quality.image_quality_score,
-    image_quality_status=quality.image_quality_status,
-    quality_warning=quality.quality_warning,
-)
+        focus_score=quality.focus_score,
+        brightness_score=quality.brightness_score,
+        contrast_score=quality.contrast_score,
+        overexposed_percent=quality.overexposed_percent,
+        underexposed_percent=quality.underexposed_percent,
+        image_quality_score=quality.image_quality_score,
+        image_quality_status=quality.image_quality_status,
+        quality_warning=quality.quality_warning,
+    )
+
 
 # ── Public API: Video ─────────────────────────────────────────────────────────
 
