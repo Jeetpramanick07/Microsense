@@ -14,7 +14,7 @@ const RISK_LEVELS = ["All", "Low", "Moderate", "High", "Critical"];
 const SORT_OPTIONS = [
   { value: "newest", label: "Newest First" },
   { value: "oldest", label: "Oldest First" },
-  { value: "mpi_desc", label: "Highest MPI" },
+  { value: "msmi_desc", label: "Highest MSMI" },
   { value: "particles_desc", label: "Highest Particle Count" },
 ];
 
@@ -74,10 +74,13 @@ export default function HistoryPage() {
     const riskCounts = { Low: 0, Moderate: 0, High: 0, Critical: 0 };
     let totalParticles = 0;
     let maxMpi = 0;
+    let totalQuality = 0;
+    let qualityCount = 0;
     for (const s of samples) {
       if (s.monitoring_risk_level in riskCounts) riskCounts[s.monitoring_risk_level]++;
       totalParticles += s.detected_particles ?? 0;
-      if ((s.mpi_score ?? 0) > maxMpi) maxMpi = s.mpi_score ?? 0;
+      if ((s.msmi_score ?? s.mpi_score ?? 0) > maxMpi) maxMpi = s.msmi_score ?? s.mpi_score ?? 0;
+      if (s.image_quality_score != null) { totalQuality += Number(s.image_quality_score); qualityCount++; }
     }
     const latestRisk = samples.length > 0
       ? [...samples].sort((a, b) => new Date(b.created_at) - new Date(a.created_at))[0]?.monitoring_risk_level
@@ -87,6 +90,7 @@ export default function HistoryPage() {
       latestRisk,
       avgParticles: total > 0 ? Math.round(totalParticles / total) : 0,
       maxMpi,
+      avgQuality: qualityCount > 0 ? Math.round(totalQuality / qualityCount) : 0,
       ...riskCounts,
     };
   }, [samples]);
@@ -104,7 +108,7 @@ export default function HistoryPage() {
     switch (sortBy) {
       case "newest": arr.sort((a, b) => new Date(b.created_at) - new Date(a.created_at)); break;
       case "oldest": arr.sort((a, b) => new Date(a.created_at) - new Date(b.created_at)); break;
-      case "mpi_desc": arr.sort((a, b) => (b.mpi_score ?? 0) - (a.mpi_score ?? 0)); break;
+      case "msmi_desc": arr.sort((a, b) => (b.msmi_score ?? b.mpi_score ?? 0) - (a.msmi_score ?? a.mpi_score ?? 0)); break;
       case "particles_desc": arr.sort((a, b) => (b.detected_particles ?? 0) - (a.detected_particles ?? 0)); break;
     }
     return arr;
@@ -155,10 +159,13 @@ export default function HistoryPage() {
             <SummaryCard icon={TrendingUp} label="Avg Particles" value={stats.avgParticles} color="blue" />
           </div>
           <div className="col-span-2 sm:col-span-2">
-            <SummaryCard icon={BarChart2} label="Highest MPI" value={stats.maxMpi} color="amber" />
+            <SummaryCard icon={BarChart2} label="Highest MSMI" value={stats.maxMpi} color="amber" />
           </div>
           <div className="col-span-2 sm:col-span-2">
             <SummaryCard icon={Shield} label="Latest Risk" value={stats.latestRisk} color="slate" />
+          </div>
+          <div className="col-span-2 sm:col-span-2">
+            <SummaryCard icon={BarChart2} label="Avg Quality" value={stats.avgQuality} color="blue" />
           </div>
           <div className="col-span-1 sm:col-span-2 lg:col-span-2">
             <SummaryCard icon={ShieldCheck} label="Low Risk" value={stats.Low} color="emerald" />
@@ -284,12 +291,16 @@ export default function HistoryPage() {
               {/* Metrics */}
               <div className="flex gap-4 flex-shrink-0">
                 <div className="text-center">
+                  <div className="text-lg font-bold text-cyan-700">{s.msmi_score ?? s.mpi_score ?? "—"}</div>
+                  <div className="text-[10px] text-slate-400">MSMI</div>
+                </div>
+                <div className="text-center">
                   <div className="text-lg font-bold text-teal-700">{s.detected_particles ?? "—"}</div>
                   <div className="text-[10px] text-slate-400">Particles</div>
                 </div>
                 <div className="text-center">
-                  <div className="text-lg font-bold text-blue-700">{s.mpi_score ?? "—"}</div>
-                  <div className="text-[10px] text-slate-400">MPI Score</div>
+                  <div className="text-lg font-bold text-blue-700">{s.image_quality_score != null ? Number(s.image_quality_score).toFixed(0) : "—"}</div>
+                  <div className="text-[10px] text-slate-400">Quality</div>
                 </div>
                 <div className="text-center">
                   <div className="text-lg font-bold text-slate-700">{s.confidence_score != null ? `${s.confidence_score}%` : "—"}</div>

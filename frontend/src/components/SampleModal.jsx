@@ -1,6 +1,6 @@
 import React from "react";
 import {
-  X, ImageIcon, Layers, Activity, Droplets, BarChart2, Thermometer, Info, Clock, Trash2, AlertTriangle
+  X, ImageIcon, Activity, Droplets, BarChart2, Info, Trash2, AlertTriangle, Microscope, Gauge, Waves
 } from "lucide-react";
 import { getMediaUrl } from "../api.js";
 import RiskBadge from "./RiskBadge.jsx";
@@ -101,25 +101,55 @@ export default function SampleModal({ sample, onClose, onDelete }) {
           <div className="space-y-4">
             {/* Key Metrics */}
             <div className="card p-4">
-              <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Detection Metrics</p>
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">MSMI Detection Metrics</p>
               <div className="grid grid-cols-2 gap-3">
-                <div className="bg-teal-50 rounded-xl p-3 text-center">
+                <div className="bg-cyan-50 rounded-xl p-3 text-center border border-cyan-100">
+                  <div className="text-2xl font-bold text-cyan-700">{sample.msmi_score ?? sample.mpi_score ?? "—"}</div>
+                  <div className="text-[10px] text-cyan-600 font-medium mt-0.5">MSMI Score</div>
+                </div>
+                <div className="bg-teal-50 rounded-xl p-3 text-center border border-teal-100">
                   <div className="text-2xl font-bold text-teal-700">{sample.detected_particles ?? "—"}</div>
                   <div className="text-[10px] text-teal-500 font-medium mt-0.5">Detected Particles</div>
                 </div>
-                <div className="bg-blue-50 rounded-xl p-3 text-center">
-                  <div className="text-2xl font-bold text-blue-700">{sample.mpi_score ?? "—"}</div>
-                  <div className="text-[10px] text-blue-500 font-medium mt-0.5">MPI Score</div>
+                <div className="bg-blue-50 rounded-xl p-3 text-center border border-blue-100">
+                  <div className="text-lg font-bold text-blue-700">{sample.estimated_particles_per_litre ?? "—"}</div>
+                  <div className="text-[10px] text-blue-500 font-medium mt-0.5">Particles / Litre</div>
                 </div>
-                <div className="bg-slate-50 rounded-xl p-3 text-center">
-                  <div className="text-lg font-bold text-slate-700">{sample.estimated_particles_per_litre ?? "—"}</div>
-                  <div className="text-[10px] text-slate-500 font-medium mt-0.5">Particles / Litre</div>
-                </div>
-                <div className="bg-slate-50 rounded-xl p-3 text-center">
+                <div className="bg-slate-50 rounded-xl p-3 text-center border border-slate-100">
                   <div className="text-lg font-bold text-slate-700">{sample.confidence_score != null ? `${sample.confidence_score}%` : "—"}</div>
                   <div className="text-[10px] text-slate-500 font-medium mt-0.5">Confidence</div>
                 </div>
               </div>
+            </div>
+
+            {/* Image Quality */}
+            <div className="card p-4">
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-1">
+                <Microscope size={12} /> Image Quality Validation
+              </p>
+              <InfoRow label="Quality Status" value={sample.image_quality_status} />
+              <InfoRow label="Quality Score" value={sample.image_quality_score != null ? Number(sample.image_quality_score).toFixed(2) : "—"} />
+              <InfoRow label="Focus Score" value={sample.focus_score != null ? Number(sample.focus_score).toFixed(2) : "—"} />
+              <InfoRow label="Brightness Score" value={sample.brightness_score != null ? Number(sample.brightness_score).toFixed(2) : "—"} />
+              <InfoRow label="Contrast Score" value={sample.contrast_score != null ? Number(sample.contrast_score).toFixed(2) : "—"} />
+              <InfoRow label="Underexposed" value={sample.underexposed_percent != null ? `${Number(sample.underexposed_percent).toFixed(2)}%` : "—"} />
+              {sample.quality_warning && (
+                <div className="mt-3 bg-amber-50 border border-amber-100 rounded-xl p-3 text-xs text-amber-800 leading-relaxed">
+                  {sample.quality_warning}
+                </div>
+              )}
+            </div>
+
+            {/* Source Risk */}
+            <div className="card p-4">
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-1">
+                <Waves size={12} /> Source-Aware Risk
+              </p>
+              <InfoRow label="Source Risk Factor" value={sample.source_risk_factor} />
+              <InfoRow label="Concentration-only Risk" value={sample.concentration_only_risk_level} />
+              <InfoRow label="Final MSMI Risk" value={sample.monitoring_risk_level} />
+              <InfoRow label="Concentration Score" value={sample.concentration_score} />
+              <InfoRow label="Size Score" value={sample.size_score} />
             </div>
 
             {/* Details list */}
@@ -134,6 +164,16 @@ export default function SampleModal({ sample, onClose, onDelete }) {
               <InfoRow label="Notes" value={sample.notes || "None"} />
               <InfoRow label="Analyzed At" value={formatDate(sample.created_at)} />
             </div>
+
+            {/* Risk Explanation */}
+            {sample.risk_explanation && (
+              <div className="bg-cyan-50 border border-cyan-100 rounded-xl p-3">
+                <p className="text-xs font-semibold text-cyan-700 mb-1 flex items-center gap-1">
+                  <Gauge size={11} /> MSMI Explanation
+                </p>
+                <p className="text-xs text-cyan-900 leading-relaxed">{sample.risk_explanation}</p>
+              </div>
+            )}
 
             {/* Recommendation */}
             {sample.recommendation && (
