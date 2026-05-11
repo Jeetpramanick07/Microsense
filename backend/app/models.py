@@ -1,81 +1,90 @@
 from datetime import datetime
-from typing import Optional, List
-from pydantic import BaseModel, field_validator, Field
+
+from sqlalchemy import Column, Integer, Float, String, Text, DateTime, ForeignKey
+from sqlalchemy.orm import relationship
+
+from app.database import Base
 
 
-class ParticleFeatureOut(BaseModel):
-    id: int
-    sample_id: int
-    x: int
-    y: int
-    width: int
-    height: int
-    area: float
-    brightness: float
-    size_category: str
+class Sample(Base):
+    """Stores the result of one image/video microplastic analysis."""
+    __tablename__ = "samples"
 
-    model_config = {"from_attributes": True}
+    id = Column(Integer, primary_key=True, index=True)
 
+    # Sample metadata
+    sample_source = Column(String(120), nullable=False)
+    chamber_volume_ml = Column(Float, nullable=False)
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
-class SampleBase(BaseModel):
-    sample_source: str
-    chamber_volume_ml: float
-    notes: Optional[str] = None
+    # Detection results
+    detected_particles = Column(Integer, nullable=False)
+    estimated_particles_per_litre = Column(Float, nullable=False)
 
-    @field_validator("sample_source")
-    @classmethod
-    def source_must_not_be_empty(cls, v: str) -> str:
-        if not v or not v.strip():
-            raise ValueError("sample_source is required")
-        return v.strip()
+    # Main scoring results
+    mpi_score = Column(Float, nullable=False)
+    msmi_score = Column(Float, nullable=True)
+    monitoring_risk_level = Column(String(20), nullable=False)
+    concentration_only_risk_level = Column(String(30), nullable=True)
 
-    @field_validator("chamber_volume_ml")
-    @classmethod
-    def volume_must_be_positive(cls, v: float) -> float:
-        if v <= 0:
-            raise ValueError("chamber_volume_ml must be greater than 0")
-        return v
+    # Component scores
+    concentration_score = Column(Float, nullable=True)
+    size_score = Column(Float, nullable=True)
+    confidence_score = Column(Float, nullable=False)
 
+    # Source-aware scoring
+    source_risk_factor = Column(Float, nullable=True)
+    risk_explanation = Column(Text, nullable=True)
 
-class SampleOut(BaseModel):
-    id: int
-    sample_source: str
-    chamber_volume_ml: float
-    detected_particles: int
-    estimated_particles_per_litre: float
-    mpi_score: float
-    monitoring_risk_level: str
-    confidence_score: float
-    average_particle_area: Optional[float] = None
-    average_brightness: Optional[float] = None
-    size_category: Optional[str] = None
-    original_image_url: Optional[str] = None
-    processed_image_url: Optional[str] = None
-    file_type: str
-    frames_analyzed: Optional[int] = None
-    average_particles_per_frame: Optional[float] = None
-    notes: Optional[str] = None
-    recommendation: str
-    created_at: datetime
+    # Particle statistics
+    average_particle_area = Column(Float, nullable=True)
+    average_brightness = Column(Float, nullable=True)
+    size_category = Column(String(80), nullable=True)
 
-    model_config = {"from_attributes": True}
+    # Image quality validation
+    focus_score = Column(Float, nullable=True)
+    brightness_score = Column(Float, nullable=True)
+    contrast_score = Column(Float, nullable=True)
+    overexposed_percent = Column(Float, nullable=True)
+    underexposed_percent = Column(Float, nullable=True)
+    image_quality_score = Column(Float, nullable=True)
+    image_quality_status = Column(String(30), nullable=True)
+    quality_warning = Column(Text, nullable=True)
 
+    # File references
+    original_file_path = Column(String(300), nullable=True)
+    processed_file_path = Column(String(300), nullable=True)
+    file_type = Column(String(10), nullable=False, default="image")
 
-class SampleDetail(SampleOut):
-    particles: List[ParticleFeatureOut] = Field(default_factory=list)
+    # Video-specific
+    frames_analyzed = Column(Integer, nullable=True)
+    average_particles_per_frame = Column(Float, nullable=True)
 
+    # Recommendation
+    recommendation = Column(Text, nullable=False)
 
-class AnalyticsSummary(BaseModel):
-    total_samples: int
-    average_mpi: float
-    average_particles_per_litre: float
-    high_risk_samples: int
-    very_high_risk_samples: int
-    latest_sample: Optional[SampleOut] = None
-    risk_distribution: dict
+    # Relationship to individual particle features
+    particles = relationship(
+        "ParticleFeature",
+        back_populates="sample",
+        cascade="all, delete-orphan",
+    )
 
 
-class HealthResponse(BaseModel):
-    status: str
-    project: str
-    message: str
+class ParticleFeature(Base):
+    """Stores individual detected particle bounding-box and feature data."""
+    __tablename__ = "particle_features"
+
+    id = Column(Integer, primary_key=True, index=True)
+    sample_id = Column(Integer, ForeignKey("samples.id"), nullable=False)
+
+    x = Column(Integer)
+    y = Column(Integer)
+    width = Column(Integer)
+    height = Column(Integer)
+    area = Column(Float)
+    brightness = Column(Float)
+    size_category = Column(String(40))
+
+    sample = relationship("Sample", back_populates="particles")
