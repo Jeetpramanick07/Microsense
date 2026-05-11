@@ -37,7 +37,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ── Static files (serve uploaded images) ─────────────────────────────────────
+# ── Static files: serve uploaded images ───────────────────────────────────────
 app.mount("/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
 
 # ── Routers ───────────────────────────────────────────────────────────────────
@@ -54,6 +54,22 @@ app.include_router(device.router, prefix=API_PREFIX)
 def root():
     return {
         "project": "MicroSense AI-Cam",
+        "status": "running",
         "docs": "/docs",
         "health": "/api/health",
+    }
+
+
+@app.get("/health", include_in_schema=False)
+def direct_health_check():
+    """
+    Direct health endpoint for frontend checks.
+
+    This allows both:
+    /api/health
+    /health
+    """
+    return {
+        "status": "online",
+        "service": "MicroSense Backend",
     }

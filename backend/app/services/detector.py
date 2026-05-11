@@ -1,19 +1,12 @@
 """
 YOLOv5-based particle detection for MicroSense AI-Cam.
 
-This detector:
-  1. Loads custom YOLOv5 model from backend/model/best.pt
-  2. Fixes Windows PosixPath issue only on Windows
-  3. Prevents Torch Hub interactive prompt on Render using trust_repo=True
-  4. Runs YOLOv5 inference on uploaded images
-  5. Draws bounding boxes on detected particles
-  6. Saves processed image with prefix yolo_processed_
-  7. Returns DetectionResult compatible with samples.py and calculator.py
-
-NOTE:
-This is still a prototype estimator. YOLO detects trained particle-like objects.
-True microplastic confirmation requires FTIR, Raman, fluorescence microscopy,
-or other validated material analysis techniques.
+Permanent fix:
+- Try YOLOv5 first.
+- If YOLO / torch.hub fails on Render, do not crash.
+- Automatically use OpenCV fallback detection.
+- Always generate processed image.
+- Always return DetectionResult to samples.py.
 """
 
 from __future__ import annotations
@@ -32,6 +25,8 @@ from app.config import (
     RESIZE_WIDTH,
     RESIZE_HEIGHT,
     IMAGE_UPLOAD_DIR,
+    MIN_CONTOUR_AREA,
+    MAX_CONTOUR_AREA,
 )
 from app.utils.helpers import generate_unique_filename
 
@@ -78,14 +73,11 @@ def get_model():
     """
     Load YOLOv5 model only once.
 
-    Windows note:
-    Some best.pt files trained on Linux/Colab contain PosixPath.
-    The PosixPath patch is needed only on Windows.
+    Windows:
+    PosixPath patch is needed only for Windows local machine.
 
-    Render/Linux note:
-    trust_repo=True prevents torch.hub from asking an interactive
-    trust confirmation question, which can cause:
-    EOF when reading a line
+    Render/Linux:
+    trust_repo=True prevents torch.hub interactive prompt.
     """
     global _model
 
@@ -95,8 +87,6 @@ def get_model():
 
         print("Loading YOLOv5 model from:", MODEL_PATH)
 
-        # Apply PosixPath fix only on Windows local machine.
-        # Do NOT apply this on Render/Linux.
         if os.name == "nt":
             pathlib.PosixPath = pathlib.WindowsPath
 
@@ -108,7 +98,6 @@ def get_model():
             trust_repo=True,
         )
 
-        # Confidence and IoU thresholds
         _model.conf = 0.25
         _model.iou = 0.45
 
@@ -117,13 +106,9 @@ def get_model():
     return _model
 
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
+# ── Helper functions ──────────────────────────────────────────────────────────
 
 def _size_label(area: float) -> str:
-    """
-    Rough size category based on bounding-box area.
-    Prototype estimation only.
-    """
     if area > 2000:
         return ">500 µm est."
     elif area > 500:
@@ -134,18 +119,10 @@ def _size_label(area: float) -> str:
 
 
 def _laplacian_variance(gray: np.ndarray) -> float:
-    """
-    Measure image sharpness.
-    Low value means blurry image.
-    """
     return float(cv2.Laplacian(gray, cv2.CV_64F).var())
 
 
 def _safe_crop(gray: np.ndarray, x1: int, y1: int, x2: int, y2: int) -> np.ndarray:
-    """
-    Safely crop a region from grayscale image.
-    Prevents out-of-bound indexing.
-    """
     h, w = gray.shape[:2]
 
     x1 = max(0, min(x1, w - 1))
@@ -159,47 +136,160 @@ def _safe_crop(gray: np.ndarray, x1: int, y1: int, x2: int, y2: int) -> np.ndarr
     return gray[y1:y2, x1:x2]
 
 
+def _classical_cv_detection(
+    img_resized: np.ndarray,
+    gray: np.ndarray,
+    lap_var: float,
+    mean_brightness: float,
+    image_path: str,
+    reason: str = "YOLO unavailable",
+) -> DetectionResult:
+    """
+    OpenCV fallback detector.
+
+    This prevents Render from returning 500 if YOLOv5/torch.hub fails.
+    """
+    print(f"WARNING: Falling back to OpenCV detector. Reason: {reason}")
+
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+    enhanced = clahe.apply(gray)
+    blurred = cv2.GaussianBlur(enhanced, (5, 5), 0)
+
+    _, binary_light = cv2.threshold(
+        blurred, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU
+    )
+    _, binary_dark = cv2.threshold(
+        blurred, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU
+    )
+
+    if cv2.countNonZero(binary_light) < cv2.countNonZero(binary_dark):
+        mask = binary_light
+    else:
+        mask = binary_dark
+
+    kernel = np.ones((3, 3), np.uint8)
+    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel, iterations=1)
+    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=1)
+
+    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    particles: List[Particle] = []
+    output_img = img_resized.copy()
+
+    for cnt in contours:
+        area = float(cv2.contourArea(cnt))
+
+        if area < MIN_CONTOUR_AREA or area > MAX_CONTOUR_AREA:
+            continue
+
+        x, y, w, h = cv2.boundingRect(cnt)
+
+        if w <= 1 or h <= 1:
+            continue
+
+        roi = _safe_crop(gray, x, y, x + w, y + h)
+        brightness = float(np.mean(roi)) if roi.size > 0 else 0.0
+
+        particle = Particle(
+            x=int(x),
+            y=int(y),
+            width=int(w),
+            height=int(h),
+            area=round(area, 2),
+            brightness=round(brightness, 2),
+            size_category=_size_label(area),
+        )
+
+        particles.append(particle)
+
+        cv2.rectangle(
+            output_img,
+            (x, y),
+            (x + w, y + h),
+            (0, 255, 255),
+            2,
+        )
+
+    cv2.putText(
+        output_img,
+        f"CV Particles: {len(particles)}",
+        (10, 25),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.7,
+        (0, 255, 0),
+        2,
+    )
+
+    proc_filename = generate_unique_filename(
+        Path(image_path).name,
+        prefix="cv_processed_",
+    )
+
+    proc_path = IMAGE_UPLOAD_DIR / proc_filename
+
+    saved = cv2.imwrite(str(proc_path), output_img)
+
+    if not saved:
+        raise ValueError(f"Failed to save processed fallback image at: {proc_path}")
+
+    avg_area = float(np.mean([p.area for p in particles])) if particles else 0.0
+    avg_brightness = float(np.mean([p.brightness for p in particles])) if particles else 0.0
+
+    return DetectionResult(
+        particles=particles,
+        processed_image_path=str(proc_path),
+        laplacian_variance=round(lap_var, 2),
+        mean_brightness=round(mean_brightness, 2),
+        average_particle_area=round(avg_area, 2),
+        average_brightness=round(avg_brightness, 2),
+    )
+
+
 # ── Public API: Image ─────────────────────────────────────────────────────────
 
 def analyze_image(image_path: str) -> DetectionResult:
     """
-    Run YOLOv5 detection on a single image.
+    Analyze uploaded image.
 
-    This function is called by:
-        app/routes/samples.py
-
-    The returned processed_image_path is stored in DB and converted to:
-        /uploads/images/yolo_processed_...
+    Flow:
+    1. Read image.
+    2. Resize image.
+    3. Try YOLOv5 detection.
+    4. If YOLO fails, use OpenCV fallback.
+    5. Save processed image.
+    6. Return DetectionResult.
     """
 
-    print("USING DETECTOR: YOLOv5 VERSION")
+    print("USING DETECTOR: YOLOv5 WITH OPENCV FALLBACK")
 
     img = cv2.imread(str(image_path))
 
     if img is None:
         raise ValueError(f"OpenCV could not read image: {image_path}")
 
-    # Resize for consistent dashboard/frontend output
     img_resized = cv2.resize(img, (RESIZE_WIDTH, RESIZE_HEIGHT))
-
-    # Grayscale for brightness and sharpness metrics
     gray = cv2.cvtColor(img_resized, cv2.COLOR_BGR2GRAY)
 
     lap_var = _laplacian_variance(gray)
     mean_brightness = float(np.mean(gray))
 
-    # Load YOLO model
-    model = get_model()
+    try:
+        model = get_model()
 
-    # YOLO expects RGB image
-    rgb = cv2.cvtColor(img_resized, cv2.COLOR_BGR2RGB)
+        rgb = cv2.cvtColor(img_resized, cv2.COLOR_BGR2RGB)
+        results = model(rgb)
 
-    # Run inference
-    results = model(rgb)
+        detections = results.xyxy[0].cpu().numpy()
 
-    # YOLO detections format:
-    # x1, y1, x2, y2, confidence, class
-    detections = results.xyxy[0].cpu().numpy()
+    except Exception as e:
+        return _classical_cv_detection(
+            img_resized=img_resized,
+            gray=gray,
+            lap_var=lap_var,
+            mean_brightness=mean_brightness,
+            image_path=image_path,
+            reason=str(e),
+        )
 
     particles: List[Particle] = []
     output_img = img_resized.copy()
@@ -234,7 +324,6 @@ def analyze_image(image_path: str) -> DetectionResult:
 
         particles.append(particle)
 
-        # Draw bounding box
         cv2.rectangle(
             output_img,
             (x1, y1),
@@ -243,7 +332,6 @@ def analyze_image(image_path: str) -> DetectionResult:
             2,
         )
 
-        # Draw label
         label = f"Particle {conf:.2f}"
 
         cv2.putText(
@@ -256,7 +344,6 @@ def analyze_image(image_path: str) -> DetectionResult:
             2,
         )
 
-    # Overlay total count
     cv2.putText(
         output_img,
         f"YOLO Particles: {len(particles)}",
@@ -267,7 +354,6 @@ def analyze_image(image_path: str) -> DetectionResult:
         2,
     )
 
-    # Save processed image with YOLO prefix
     proc_filename = generate_unique_filename(
         Path(image_path).name,
         prefix="yolo_processed_",
@@ -282,7 +368,6 @@ def analyze_image(image_path: str) -> DetectionResult:
 
     print("DETECTOR.PY FINAL processed_path:", proc_path)
 
-    # Aggregate stats
     avg_area = float(np.mean([p.area for p in particles])) if particles else 0.0
     avg_brightness = float(np.mean([p.brightness for p in particles])) if particles else 0.0
 
@@ -302,8 +387,8 @@ def analyze_video(video_path: str, frame_interval: int = 10) -> dict:
     """
     Analyze video using YOLOv5 frame-by-frame.
 
-    Saves the first processed frame as preview image with prefix:
-        yolo_preview_
+    If YOLO fails for video, this will still raise error.
+    Main permanent fix is for image upload route.
     """
 
     print("USING VIDEO DETECTOR: YOLOv5 VERSION")
@@ -393,7 +478,6 @@ def analyze_video(video_path: str, frame_interval: int = 10) -> dict:
                 }
             )
 
-            # Save first processed frame as preview
             if not preview_saved:
                 cv2.putText(
                     out_frame,

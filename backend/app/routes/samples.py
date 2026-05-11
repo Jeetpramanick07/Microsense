@@ -278,22 +278,24 @@ def list_samples(
     return [_build_sample_out(s) for s in samples]
 
 
-# ── Latest Sample ─────────────────────────────────────────────────────────────
+# ── Latest Sample ────────────────────────────────────────────────────────────
 
-@router.get("/latest", response_model=SampleOut)
+@router.get("/latest")
 def get_latest_sample(db: Session = Depends(get_db)):
     """
     Return the latest analyzed sample.
-    Useful for frontend dashboard, OLED display, or ESP32 sync.
+
+    Permanent fix:
+    If database is empty, return null instead of 404.
+    This prevents repeated frontend console errors before first analysis.
     """
 
     sample = db.query(models.Sample).order_by(models.Sample.created_at.desc()).first()
 
     if not sample:
-        raise HTTPException(status_code=404, detail="No analyzed sample found")
+        return None
 
     return _build_sample_out(sample)
-
 
 # ── Single Sample ─────────────────────────────────────────────────────────────
 
