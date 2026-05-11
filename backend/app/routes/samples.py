@@ -84,13 +84,16 @@ async def analyze_image(
         )
 
     # 3. Calculate MPI and risk values
+
     calc = calculator.calculate_results(
-        detected_particles=result.count,
-        chamber_volume_ml=chamber_volume_ml,
-        average_area=result.average_particle_area,
-        laplacian_variance=result.laplacian_variance,
-        mean_brightness=result.mean_brightness,
-    )
+    detected_particles=result.count,
+    chamber_volume_ml=chamber_volume_ml,
+    average_area=result.average_particle_area,
+    laplacian_variance=result.laplacian_variance,
+    mean_brightness=result.mean_brightness,
+    sample_source=sample_source,
+    image_quality_score=getattr(result, "image_quality_score", None),
+)
 
     # 4. Save sample result to database
     sample = models.Sample(
@@ -102,10 +105,24 @@ async def analyze_image(
         mpi_score=calc["mpi_score"],
         monitoring_risk_level=calc["monitoring_risk_level"],
         confidence_score=calc["confidence_score"],
+        msmi_score=calc.get("msmi_score"),
+        concentration_only_risk_level=calc.get("concentration_only_risk_level"),
+        concentration_score=calc.get("concentration_score"),
+        size_score=calc.get("size_score"),
+        source_risk_factor=calc.get("source_risk_factor"),
+        risk_explanation=calc.get("risk_explanation"),
 
         average_particle_area=result.average_particle_area,
         average_brightness=result.average_brightness,
         size_category=calc["size_category"],
+        focus_score=getattr(result, "focus_score", None),
+        brightness_score=getattr(result, "brightness_score", None),
+        contrast_score=getattr(result, "contrast_score", None),
+        overexposed_percent=getattr(result, "overexposed_percent", None),
+        underexposed_percent=getattr(result, "underexposed_percent", None),
+        image_quality_score=getattr(result, "image_quality_score", None),
+        image_quality_status=getattr(result, "image_quality_status", None),
+        quality_warning=getattr(result, "quality_warning", None),
 
         original_file_path=str(original_path),
 
@@ -204,12 +221,14 @@ async def analyze_video(
 
     # 3. MPI calculation using average particle count across frames
     calc = calculator.calculate_results(
-        detected_particles=vresult["detected_particles"],
-        chamber_volume_ml=chamber_volume_ml,
-        average_area=vresult["average_particle_area"],
-        laplacian_variance=vresult["laplacian_variance"],
-        mean_brightness=vresult["average_brightness"],
-    )
+    detected_particles=vresult["detected_particles"],
+    chamber_volume_ml=chamber_volume_ml,
+    average_area=vresult["average_particle_area"],
+    laplacian_variance=vresult["laplacian_variance"],
+    mean_brightness=vresult["average_brightness"],
+    sample_source=sample_source,
+    image_quality_score=None,
+)
 
     # 4. Save video sample result
     sample = models.Sample(
@@ -221,6 +240,12 @@ async def analyze_video(
         mpi_score=calc["mpi_score"],
         monitoring_risk_level=calc["monitoring_risk_level"],
         confidence_score=calc["confidence_score"],
+        msmi_score=calc.get("msmi_score"),
+        concentration_only_risk_level=calc.get("concentration_only_risk_level"),
+        concentration_score=calc.get("concentration_score"),
+        size_score=calc.get("size_score"),
+        source_risk_factor=calc.get("source_risk_factor"),
+        risk_explanation=calc.get("risk_explanation"),
 
         average_particle_area=vresult["average_particle_area"],
         average_brightness=vresult["average_brightness"],

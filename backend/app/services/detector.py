@@ -11,6 +11,7 @@ Permanent fix:
 
 from __future__ import annotations
 
+
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List
@@ -29,6 +30,7 @@ from app.config import (
     MAX_CONTOUR_AREA,
 )
 from app.utils.helpers import generate_unique_filename
+from app.services.quality import evaluate_image_quality
 
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
@@ -59,11 +61,19 @@ class DetectionResult:
     average_particle_area: float = 0.0
     average_brightness: float = 0.0
 
+    # New image quality fields
+    focus_score: float = 0.0
+    brightness_score: float = 0.0
+    contrast_score: float = 0.0
+    overexposed_percent: float = 0.0
+    underexposed_percent: float = 0.0
+    image_quality_score: float = 0.0
+    image_quality_status: str = "Unknown"
+    quality_warning: str = ""
+
     @property
     def count(self) -> int:
         return len(self.particles)
-
-
 # ── Model loading ─────────────────────────────────────────────────────────────
 
 _model = None
@@ -272,6 +282,7 @@ def analyze_image(image_path: str) -> DetectionResult:
 
     lap_var = _laplacian_variance(gray)
     mean_brightness = float(np.mean(gray))
+    quality = evaluate_image_quality(gray)
 
     try:
         model = get_model()
@@ -369,17 +380,25 @@ def analyze_image(image_path: str) -> DetectionResult:
     print("DETECTOR.PY FINAL processed_path:", proc_path)
 
     avg_area = float(np.mean([p.area for p in particles])) if particles else 0.0
-    avg_brightness = float(np.mean([p.brightness for p in particles])) if particles else 0.0
+    avg_brightness = float(np.mean([p.brightness for p in particles])) if particles else 0.
 
     return DetectionResult(
-        particles=particles,
-        processed_image_path=str(proc_path),
-        laplacian_variance=round(lap_var, 2),
-        mean_brightness=round(mean_brightness, 2),
-        average_particle_area=round(avg_area, 2),
-        average_brightness=round(avg_brightness, 2),
-    )
+    particles=particles,
+    processed_image_path=str(proc_path),
+    laplacian_variance=round(lap_var, 2),
+    mean_brightness=round(mean_brightness, 2),
+    average_particle_area=round(avg_area, 2),
+    average_brightness=round(avg_brightness, 2),
 
+    focus_score=quality.focus_score,
+    brightness_score=quality.brightness_score,
+    contrast_score=quality.contrast_score,
+    overexposed_percent=quality.overexposed_percent,
+    underexposed_percent=quality.underexposed_percent,
+    image_quality_score=quality.image_quality_score,
+    image_quality_status=quality.image_quality_status,
+    quality_warning=quality.quality_warning,
+)
 
 # ── Public API: Video ─────────────────────────────────────────────────────────
 

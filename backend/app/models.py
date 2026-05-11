@@ -1,60 +1,81 @@
 from datetime import datetime
-from sqlalchemy import Column, Integer, Float, String, Text, DateTime, ForeignKey
-from sqlalchemy.orm import relationship
-from app.database import Base
+from typing import Optional, List
+from pydantic import BaseModel, field_validator, Field
 
 
-class Sample(Base):
-    """Stores the result of one image/video microplastic analysis."""
-    __tablename__ = "samples"
+class ParticleFeatureOut(BaseModel):
+    id: int
+    sample_id: int
+    x: int
+    y: int
+    width: int
+    height: int
+    area: float
+    brightness: float
+    size_category: str
 
-    id = Column(Integer, primary_key=True, index=True)
-    sample_source = Column(String(120), nullable=False)
-    chamber_volume_ml = Column(Float, nullable=False)
-
-    # Detection results
-    detected_particles = Column(Integer, nullable=False)
-    estimated_particles_per_litre = Column(Float, nullable=False)
-    mpi_score = Column(Float, nullable=False)
-    monitoring_risk_level = Column(String(20), nullable=False)
-    confidence_score = Column(Float, nullable=False)
-
-    # Particle statistics
-    average_particle_area = Column(Float, nullable=True)
-    average_brightness = Column(Float, nullable=True)
-    size_category = Column(String(60), nullable=True)
-
-    # File references
-    original_file_path = Column(String(300), nullable=True)
-    processed_file_path = Column(String(300), nullable=True)
-    file_type = Column(String(10), nullable=False, default="image")  # "image" | "video"
-
-    # Video-specific
-    frames_analyzed = Column(Integer, nullable=True)
-    average_particles_per_frame = Column(Float, nullable=True)
-
-    # Metadata
-    notes = Column(Text, nullable=True)
-    recommendation = Column(Text, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-
-    # Relationship to individual particle features (optional detail)
-    particles = relationship("ParticleFeature", back_populates="sample", cascade="all, delete-orphan")
+    model_config = {"from_attributes": True}
 
 
-class ParticleFeature(Base):
-    """Stores individual detected particle bounding-box & feature data."""
-    __tablename__ = "particle_features"
+class SampleBase(BaseModel):
+    sample_source: str
+    chamber_volume_ml: float
+    notes: Optional[str] = None
 
-    id = Column(Integer, primary_key=True, index=True)
-    sample_id = Column(Integer, ForeignKey("samples.id"), nullable=False)
+    @field_validator("sample_source")
+    @classmethod
+    def source_must_not_be_empty(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("sample_source is required")
+        return v.strip()
 
-    x = Column(Integer)
-    y = Column(Integer)
-    width = Column(Integer)
-    height = Column(Integer)
-    area = Column(Float)
-    brightness = Column(Float)
-    size_category = Column(String(40))
+    @field_validator("chamber_volume_ml")
+    @classmethod
+    def volume_must_be_positive(cls, v: float) -> float:
+        if v <= 0:
+            raise ValueError("chamber_volume_ml must be greater than 0")
+        return v
 
-    sample = relationship("Sample", back_populates="particles")
+
+class SampleOut(BaseModel):
+    id: int
+    sample_source: str
+    chamber_volume_ml: float
+    detected_particles: int
+    estimated_particles_per_litre: float
+    mpi_score: float
+    monitoring_risk_level: str
+    confidence_score: float
+    average_particle_area: Optional[float] = None
+    average_brightness: Optional[float] = None
+    size_category: Optional[str] = None
+    original_image_url: Optional[str] = None
+    processed_image_url: Optional[str] = None
+    file_type: str
+    frames_analyzed: Optional[int] = None
+    average_particles_per_frame: Optional[float] = None
+    notes: Optional[str] = None
+    recommendation: str
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class SampleDetail(SampleOut):
+    particles: List[ParticleFeatureOut] = Field(default_factory=list)
+
+
+class AnalyticsSummary(BaseModel):
+    total_samples: int
+    average_mpi: float
+    average_particles_per_litre: float
+    high_risk_samples: int
+    very_high_risk_samples: int
+    latest_sample: Optional[SampleOut] = None
+    risk_distribution: dict
+
+
+class HealthResponse(BaseModel):
+    status: str
+    project: str
+    message: str

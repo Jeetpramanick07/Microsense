@@ -1,6 +1,7 @@
 from datetime import datetime
 from typing import Optional, List
-from pydantic import BaseModel, field_validator, Field
+
+from pydantic import BaseModel, Field, field_validator
 
 
 class ParticleFeatureOut(BaseModel):
@@ -39,24 +40,58 @@ class SampleBase(BaseModel):
 
 class SampleOut(BaseModel):
     id: int
+
+    # Sample metadata
     sample_source: str
     chamber_volume_ml: float
+    notes: Optional[str] = None
+    created_at: datetime
+
+    # Detection results
     detected_particles: int
     estimated_particles_per_litre: float
+
+    # Main scoring results
     mpi_score: float
+    msmi_score: Optional[float] = None
     monitoring_risk_level: str
+    concentration_only_risk_level: Optional[str] = None
+
+    # Component scores
+    concentration_score: Optional[float] = None
+    size_score: Optional[float] = None
     confidence_score: float
+
+    # Source-aware scoring
+    source_risk_factor: Optional[float] = None
+    risk_explanation: Optional[str] = None
+
+    # Particle statistics
     average_particle_area: Optional[float] = None
     average_brightness: Optional[float] = None
     size_category: Optional[str] = None
+
+    # Image quality validation
+    focus_score: Optional[float] = None
+    brightness_score: Optional[float] = None
+    contrast_score: Optional[float] = None
+    overexposed_percent: Optional[float] = None
+    underexposed_percent: Optional[float] = None
+    image_quality_score: Optional[float] = None
+    image_quality_status: Optional[str] = None
+    quality_warning: Optional[str] = None
+
+    # File URLs
     original_image_url: Optional[str] = None
     processed_image_url: Optional[str] = None
     file_type: str
+
+    # Video-specific
     frames_analyzed: Optional[int] = None
     average_particles_per_frame: Optional[float] = None
-    notes: Optional[str] = None
+
+    # Recommendation
     recommendation: str
-    created_at: datetime
 
     model_config = {"from_attributes": True}
 
@@ -78,4 +113,4 @@ class AnalyticsSummary(BaseModel):
 class HealthResponse(BaseModel):
     status: str
     project: str
-    message: str
+    message: str    
