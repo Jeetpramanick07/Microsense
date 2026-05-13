@@ -1,15 +1,10 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Link } from "react-router-dom";
 import Navbar from "./components/Navbar.jsx";
 import Dashboard from "./components/Dashboard.jsx";
 import UploadPage from "./components/UploadPage.jsx";
 import HistoryPage from "./components/HistoryPage.jsx";
-import {
-  checkBackendConnection,
-  checkDatabaseReady,
-  getLatestSample,
-  getSamples,
-} from "./api.js";
+import { checkBackendConnection, checkDatabaseReady, getLatestSample, getSamples } from "./api.js";
 
 function AppInner() {
   const [checking, setChecking] = useState(true);
@@ -30,7 +25,6 @@ function AppInner() {
         checkDatabaseReady(),
         getLatestSample(),
       ]);
-
       let totalSamples = null;
       if (dbOk) {
         try {
@@ -40,7 +34,6 @@ function AppInner() {
           totalSamples = null;
         }
       }
-
       setLatestSample(latest);
       setSystemStatus({
         backendConnected: backendOk,
@@ -56,61 +49,28 @@ function AppInner() {
 
   useEffect(() => {
     refreshStatus();
-    // Auto-refresh every 30 seconds
     const interval = setInterval(refreshStatus, 30000);
     return () => clearInterval(interval);
   }, [refreshStatus]);
 
   return (
-    <div className="min-h-screen bg-mesh">
-      <Navbar
-        backendConnected={systemStatus.backendConnected}
-        checking={checking}
-        onRefresh={refreshStatus}
-      />
-      <main className="pb-16">
+    <div className="min-h-screen bg-mesh text-slate-900">
+      <Navbar backendConnected={systemStatus.backendConnected} checking={checking} onRefresh={refreshStatus} />
+      <main className="pb-28 md:pb-16">
         <Routes>
-          <Route
-            path="/"
-            element={
-              <Dashboard
-                systemStatus={systemStatus}
-                latestSample={latestSample}
-                checking={checking}
-                onRefresh={refreshStatus}
-              />
-            }
-          />
+          <Route path="/" element={<Dashboard systemStatus={systemStatus} latestSample={latestSample} checking={checking} onRefresh={refreshStatus} />} />
           <Route path="/upload" element={<UploadPage />} />
           <Route path="/history" element={<HistoryPage />} />
-          <Route
-            path="*"
-            element={
-              <div className="flex flex-col items-center justify-center py-32 gap-4">
-                <span className="text-6xl">🔬</span>
-                <h1 className="text-2xl font-bold text-slate-800">Page Not Found</h1>
-                <a href="/" className="text-teal-600 hover:underline text-sm">Return to Dashboard →</a>
-              </div>
-            }
-          />
+          <Route path="*" element={<div className="mx-auto flex max-w-3xl flex-col items-center justify-center px-6 py-32 text-center"><div className="mb-5 rounded-3xl bg-white p-6 text-6xl shadow-xl">🔬</div><h1 className="text-3xl font-black text-slate-950">Page Not Found</h1><p className="mt-2 text-slate-500">This MicroSense route does not exist.</p><Link to="/" className="mt-6 rounded-2xl bg-cyan-600 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-cyan-200 transition hover:-translate-y-0.5">Return to Dashboard</Link></div>} />
         </Routes>
       </main>
-
-      {/* Footer */}
-      <footer className="border-t border-slate-200 bg-white/80 py-4 px-6 text-center">
-        <p className="text-xs text-slate-400">
-          MicroSense AI-Cam · Hardware-linked AI microplastic monitoring prototype ·{" "}
-          <span className="font-mono">FastAPI + YOLO26n + Hybrid validation + React</span>
-        </p>
+      <footer className="mb-24 border-t border-cyan-100 bg-white/70 px-4 py-6 text-center backdrop-blur-xl md:mb-0 sm:px-6">
+        <p className="mx-auto max-w-sm text-xs leading-6 text-slate-500 sm:max-w-none">MicroSense AI-Cam · Prototype AI microplastic monitoring system · <span className="font-mono text-cyan-700">FastAPI + YOLO26n + Hybrid Validation + React</span></p>
       </footer>
     </div>
   );
 }
 
 export default function App() {
-  return (
-    <BrowserRouter>
-      <AppInner />
-    </BrowserRouter>
-  );
+  return <BrowserRouter><AppInner /></BrowserRouter>;
 }

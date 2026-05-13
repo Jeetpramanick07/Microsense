@@ -1,356 +1,180 @@
 import React from "react";
 import { Link } from "react-router-dom";
 import {
-  Server, Cpu, Camera, Bluetooth, Database, RefreshCw, Monitor,
-  Zap, ArrowRight, AlertCircle, ChevronRight, Activity, Droplets,
-  BarChart2, Clock, Hash, FlaskConical, ExternalLink, Wifi
+  Server, Cpu, Camera, Bluetooth, Database, RefreshCw, Monitor, Zap, ArrowRight,
+  AlertCircle, Activity, Droplets, BarChart3, Clock, FlaskConical, Wifi, ShieldCheck,
+  Gauge, Sparkles, Microscope, Layers3, Eye, CircuitBoard, ScanLine, Waves, TrendingUp
 } from "lucide-react";
 import StatusCard from "./StatusCard.jsx";
 import RiskBadge from "./RiskBadge.jsx";
 import { getMediaUrl, API_BASE_URL } from "../api.js";
 
-const PIPELINE_STEPS = [
-  { icon: Camera, label: "Camera / Microscope", desc: "Hardware capture", color: "slate" },
-  { icon: Server, label: "FastAPI Backend", desc: "Image receiver", color: "teal" },
-  { icon: Cpu, label: "YOLOv5 Model", desc: "AI detection engine", color: "cyan" },
-  { icon: Database, label: "Database Storage", desc: "Result persistence", color: "blue" },
-  { icon: Monitor, label: "Dashboard / OLED", desc: "Result display", color: "indigo" },
+const pipeline = [
+  { icon: Camera, label: "Camera / Microscope", desc: "Optical sample image" },
+  { icon: Server, label: "FastAPI Backend", desc: "Upload + preprocessing" },
+  { icon: Cpu, label: "YOLO26n Main", desc: "Candidate detection" },
+  { icon: ShieldCheck, label: "Hybrid Validation", desc: "Visual reliability filter" },
+  { icon: Database, label: "Database", desc: "MSMI + history" },
+  { icon: Monitor, label: "Dashboard / OLED", desc: "Live interpretation" },
 ];
 
-const pipelineColors = {
-  slate: "bg-slate-100 text-slate-500 border-slate-200",
-  teal: "bg-teal-100 text-teal-600 border-teal-200",
-  cyan: "bg-cyan-100 text-cyan-600 border-cyan-200",
-  blue: "bg-blue-100 text-blue-600 border-blue-200",
-  indigo: "bg-indigo-100 text-indigo-600 border-indigo-200",
-};
+const modules = [
+  { icon: Cpu, title: "YOLO26n Main Detector", text: "Primary lightweight detector for microplastic-like particle candidates." },
+  { icon: ShieldCheck, title: "Hybrid AI Validation", text: "Checks contrast, edge boundary, compactness and area after detection." },
+  { icon: Eye, title: "Image Quality Scoring", text: "Flags blur, darkness, overexposure and underexposure before interpretation." },
+  { icon: Gauge, title: "Source-Aware MSMI", text: "Prototype monitoring score adjusted by sample source and confidence." },
+  { icon: ScanLine, title: "Processed Image Output", text: "Visual overlay of accepted and rejected candidate regions." },
+  { icon: Database, title: "Database History", text: "Stores sample results, particle features and monitoring trends." },
+];
 
-const dotColors = {
-  slate: "bg-slate-300",
-  teal: "bg-teal-500",
-  cyan: "bg-cyan-500",
-  blue: "bg-blue-500",
-  indigo: "bg-indigo-500",
-};
+const fmt = (value, fallback = "—") => value === null || value === undefined || value === "" ? fallback : value;
+const num = (value, digits = 0) => value === null || value === undefined ? "—" : Number(value).toFixed(digits).replace(/\.0+$/, "");
 
 export default function Dashboard({ systemStatus, latestSample, checking, onRefresh }) {
-  const {
-    backendConnected,
-    databaseReady,
-    latestSampleAvailable,
-    lastChecked,
-    totalSamples,
-  } = systemStatus;
-
-  const formatDate = (dt) => {
-    if (!dt) return "—";
-    return new Date(dt).toLocaleString("en-IN", {
-      day: "2-digit", month: "short", year: "numeric",
-      hour: "2-digit", minute: "2-digit",
-    });
-  };
-
-  const formatChecked = (dt) => {
-    if (!dt) return "Never";
-    return new Date(dt).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
-  };
+  const { backendConnected, databaseReady, latestSampleAvailable, lastChecked, totalSamples } = systemStatus;
+  const formatChecked = (dt) => dt ? new Date(dt).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "Never";
 
   const statusCards = [
-    {
-      icon: Server,
-      title: "Backend API",
-      description: "FastAPI server running YOLOv5 analysis pipeline",
-      status: checking ? "checking" : backendConnected ? "connected" : "offline",
-      detail: `${API_BASE_URL}/docs`,
-    },
-    {
-      icon: Cpu,
-      title: "YOLOv5 Model",
-      description: "Custom-trained microplastic detection model (best.pt)",
-      status: checking ? "checking" : backendConnected ? "ready" : "offline",
-      detail: backendConnected ? "backend/model/best.pt — Loaded" : "Requires backend connection",
-    },
-    {
-      icon: Camera,
-      title: "Camera Module",
-      description: "Microscope/camera hardware for water sample capture",
-      status: "waiting",
-      detail: "Waiting for hardware signal — Not yet integrated",
-    },
-    {
-      icon: Bluetooth,
-      title: "ESP32 / Hardware Unit",
-      description: "Microcontroller for hardware communication layer",
-      status: "pending",
-      detail: "Pending integration — Hardware design phase",
-    },
-    {
-      icon: Database,
-      title: "Storage / Database",
-      description: "SQLite/PostgreSQL backend for storing all test results",
-      status: checking ? "checking" : databaseReady ? "ready" : "offline",
-      detail: databaseReady ? `${totalSamples ?? "?"} records stored` : "Could not reach /api/samples/",
-    },
-    {
-      icon: RefreshCw,
-      title: "Latest Sample Sync",
-      description: "Real-time access to the most recent analysis result",
-      status: checking ? "checking" : latestSampleAvailable ? "available" : "offline",
-      detail: latestSampleAvailable ? `Sample #${latestSample?.id} — ${latestSample?.sample_source}` : "No sample found in database",
-    },
-    {
-      icon: Monitor,
-      title: "OLED Display",
-      description: "Optional hardware display showing latest result summary",
-      status: "optional",
-      detail: "Optional / Not connected — Future hardware feature",
-    },
+    { icon: Server, title: "Backend API", description: "FastAPI server running YOLO26n main analysis pipeline", status: checking ? "checking" : backendConnected ? "connected" : "offline", detail: `${API_BASE_URL}/docs` },
+    { icon: Cpu, title: "YOLO26n Main Detector", description: "Primary detection route for microplastic-like particle candidates", status: checking ? "checking" : backendConnected ? "ready" : "offline", detail: "backend/model/yolo26_best.pt" },
+    { icon: Database, title: "Storage / Database", description: "PostgreSQL/SQLite persistence for analysis history", status: checking ? "checking" : databaseReady ? "ready" : "offline", detail: databaseReady ? `${totalSamples ?? "?"} records synced` : "Could not reach /api/samples/" },
+    { icon: RefreshCw, title: "Latest Sample Sync", description: "Live access to the most recent sample intelligence", status: checking ? "checking" : latestSampleAvailable ? "available" : "waiting", detail: latestSampleAvailable ? `Sample #${latestSample?.id} · ${latestSample?.sample_source}` : "No latest sample yet" },
+    { icon: Camera, title: "Camera Module", description: "Optical sample capture layer for water chamber images", status: "waiting", detail: "Hardware integration ready" },
+    { icon: Bluetooth, title: "ESP32 / Hardware Unit", description: "Microcontroller layer for future portable workflow", status: "pending", detail: "Prototype extension" },
+    { icon: Monitor, title: "OLED Display", description: "Optional compact display for field-ready results", status: "optional", detail: "Future hardware display" },
+  ];
+
+  const stats = [
+    { icon: Gauge, label: "Latest MSMI", value: num(latestSample?.msmi_score ?? latestSample?.mpi_score), suffix: "", tone: "cyan" },
+    { icon: Droplets, label: "Detected Candidates", value: fmt(latestSample?.detected_particles), tone: "teal" },
+    { icon: ShieldCheck, label: "Hybrid Score", value: num(latestSample?.hybrid_filter_score, 1), tone: "emerald" },
+    { icon: Eye, label: "Image Quality", value: fmt(latestSample?.image_quality_status), tone: "amber" },
   ];
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8 animate-fade-in">
+    <div className="relative mx-auto max-w-7xl space-y-6 px-3 py-5 sm:space-y-8 sm:px-6 sm:py-8 lg:px-8">
+      <div className="pointer-events-none absolute -left-20 top-20 hidden h-72 w-72 rounded-full bg-cyan-200/30 blur-3xl float-slow sm:block" />
+      <div className="pointer-events-none absolute right-0 top-40 hidden h-72 w-72 rounded-full bg-teal-200/30 blur-3xl float-delayed sm:block" />
 
-      {/* Page Header */}
-      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2 mb-1">
-            <span className="text-xs font-mono text-teal-500 bg-teal-50 border border-teal-100 px-2 py-0.5 rounded-full tracking-widest uppercase">
-              Control Center
-            </span>
-          </div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">
-            MicroSense AI-Cam
-          </h1>
-          <p className="text-slate-500 mt-1 text-sm">
-            Hardware-linked AI microplastic monitoring system · Real-time control dashboard
-          </p>
-        </div>
-        <button
-          onClick={onRefresh}
-          disabled={checking}
-          className="flex items-center gap-2 px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium rounded-xl disabled:opacity-50 transition-all shadow-sm hover:shadow-md self-start sm:self-auto"
-        >
-          <RefreshCw size={14} className={checking ? "animate-spin" : ""} />
-          {checking ? "Refreshing..." : "Refresh Status"}
-        </button>
-      </div>
-
-      {/* Offline warning */}
       {!checking && !backendConnected && (
-        <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-start gap-3 animate-slide-up">
-          <AlertCircle size={18} className="text-red-500 flex-shrink-0 mt-0.5" />
-          <div>
-            <p className="text-sm font-semibold text-red-800">MicroSense Backend Offline</p>
-            <p className="text-xs text-red-600 mt-0.5">
-              Could not connect to FastAPI at <code className="font-mono bg-red-100 px-1 rounded">{API_BASE_URL}</code>.
-              Make sure the backend is running with <code className="font-mono bg-red-100 px-1 rounded">python run.py</code> inside the backend folder.
-            </p>
+        <div className="animate-slide-up rounded-3xl border border-rose-200 bg-rose-50/90 p-4 text-rose-800 shadow-sm">
+          <div className="flex gap-3">
+            <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" />
+            <div>
+              <p className="font-black">MicroSense Backend Offline</p>
+              <p className="mt-1 text-sm">Could not connect to FastAPI at <code className="rounded bg-white px-1 font-mono">{API_BASE_URL}</code>. Please check Render deployment or local backend.</p>
+            </div>
           </div>
         </div>
       )}
 
-      {/* System Status Cards */}
-      <section>
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-base font-bold text-slate-700 flex items-center gap-2">
-            <Activity size={16} className="text-teal-500" /> System Readiness
-          </h2>
-          {lastChecked && (
-            <span className="text-xs text-slate-400 font-mono">
-              Last checked: {formatChecked(lastChecked)}
-            </span>
-          )}
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {statusCards.map((card) => (
-            <StatusCard key={card.title} {...card} />
-          ))}
-        </div>
-      </section>
-
-      {/* Pipeline Visualization */}
-      <section>
-        <h2 className="text-base font-bold text-slate-700 mb-3 flex items-center gap-2">
-          <Zap size={16} className="text-teal-500" /> Hardware Pipeline
-        </h2>
-        <div className="card p-5">
-          {/* Desktop horizontal pipeline */}
-          <div className="hidden md:flex items-center gap-0">
-            {PIPELINE_STEPS.map((step, i) => (
-              <React.Fragment key={step.label}>
-                <div
-                  className={`flex flex-col items-center gap-2 px-4 py-3 rounded-xl border transition-all cursor-default hover:shadow-md ${pipelineColors[step.color]}`}
-                  style={{ minWidth: 130 }}
-                >
-                  <div className="w-10 h-10 rounded-xl bg-white/70 flex items-center justify-center border shadow-sm">
-                    <step.icon size={18} />
-                  </div>
-                  <div className="text-center">
-                    <div className="text-xs font-semibold leading-tight">{step.label}</div>
-                    <div className="text-[10px] opacity-70 mt-0.5">{step.desc}</div>
-                  </div>
-                  <span className={`status-dot ${dotColors[step.color]} ${i > 0 && i <= 3 && backendConnected ? "pulse-ring" : ""}`} />
-                </div>
-                {i < PIPELINE_STEPS.length - 1 && (
-                  <div className="flex items-center flex-1 px-1">
-                    <div className="pipeline-line" />
-                    <ArrowRight size={14} className="text-teal-400 flex-shrink-0" />
-                  </div>
-                )}
-              </React.Fragment>
-            ))}
-          </div>
-          {/* Mobile vertical pipeline */}
-          <div className="flex md:hidden flex-col gap-3">
-            {PIPELINE_STEPS.map((step, i) => (
-              <React.Fragment key={step.label}>
-                <div className={`flex items-center gap-3 p-3 rounded-xl border ${pipelineColors[step.color]}`}>
-                  <div className="w-9 h-9 rounded-xl bg-white/70 flex items-center justify-center border shadow-sm flex-shrink-0">
-                    <step.icon size={16} />
-                  </div>
-                  <div className="flex-1">
-                    <div className="text-xs font-semibold">{step.label}</div>
-                    <div className="text-[10px] opacity-70">{step.desc}</div>
-                  </div>
-                  <span className={`status-dot ${dotColors[step.color]}`} />
-                </div>
-                {i < PIPELINE_STEPS.length - 1 && (
-                  <div className="flex items-center gap-1 pl-10">
-                    <div className="w-px h-4 bg-gradient-to-b from-teal-300 to-cyan-300" />
-                  </div>
-                )}
-              </React.Fragment>
-            ))}
-          </div>
-          <div className="mt-4 pt-4 border-t border-slate-100">
-            <p className="text-xs text-slate-400 italic leading-relaxed">
-              <span className="font-semibold text-teal-600 not-italic">Primary workflow:</span>{" "}
-              Hardware camera captures water sample → FastAPI backend receives image → YOLOv5 detects microplastic particles → Result stored in database → Dashboard displays latest monitoring status.{" "}
-              <span className="font-semibold text-slate-500 not-italic">Manual upload is available only for testing and demo mode.</span>
+      <section className="relative overflow-hidden rounded-3xl border border-cyan-100 bg-white/80 p-4 shadow-2xl shadow-cyan-100/70 backdrop-blur-2xl sm:rounded-[2rem] sm:p-8 lg:p-10 soft-grid">
+        <div className="absolute right-8 top-8 hidden h-24 w-24 rounded-full border border-cyan-200/60 lg:block" />
+        <div className="absolute bottom-10 right-20 hidden h-12 w-12 rounded-full bg-teal-200/40 blur-sm lg:block" />
+        <div className="grid gap-10 lg:grid-cols-[1.05fr_.95fr] lg:items-center">
+          <div className="animate-slide-up">
+            <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-cyan-200 bg-cyan-50/90 px-4 py-2 text-xs font-black uppercase tracking-[0.2em] text-cyan-700 shadow-sm">
+              <Sparkles className="h-4 w-4" /> YOLO26n Main Pipeline
+            </div>
+            <h1 className="max-w-4xl text-[2.15rem] font-black leading-tight tracking-tight text-slate-950 sm:text-5xl lg:text-6xl">
+              AI-Powered <span className="bg-gradient-to-r from-cyan-600 via-teal-600 to-blue-600 bg-clip-text text-transparent">Microplastic Screening</span> for Water Samples
+            </h1>
+            <p className="mt-5 max-w-2xl text-sm leading-7 text-slate-600 sm:text-lg sm:leading-8">
+              MicroSense AI-Cam combines optical imaging, YOLO26n main detection, hybrid validation and MSMI scoring for prototype-level water sample monitoring.
             </p>
+            <div className="mt-6 flex flex-col gap-3 sm:mt-8 sm:flex-row">
+              <Link to="/upload" className="group inline-flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-cyan-600 to-teal-600 px-6 py-3.5 text-sm font-black text-white shadow-xl shadow-cyan-200 transition hover:-translate-y-1 hover:shadow-cyan-300">
+                Analyze Sample <ArrowRight className="h-4 w-4 transition group-hover:translate-x-1" />
+              </Link>
+              <Link to="/history" className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white/85 px-6 py-3.5 text-sm font-black text-slate-700 shadow-sm transition hover:-translate-y-1 hover:border-cyan-200 hover:text-cyan-700">
+                View History <Database className="h-4 w-4" />
+              </Link>
+            </div>
+          </div>
+
+          <div className="relative animate-scale-in stagger-2">
+            <div className="aurora-border rounded-[2rem] p-[2px]">
+              <div className="relative overflow-hidden rounded-[calc(2rem-2px)] bg-white p-5 shadow-xl scan-line">
+                <div className="mb-4 flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-black uppercase tracking-[0.22em] text-cyan-700">Live Sample Intelligence</p>
+                    <h3 className="mt-1 text-2xl font-black text-slate-950">{latestSample ? latestSample.sample_source : "Waiting for sample"}</h3>
+                  </div>
+                  {latestSample ? <RiskBadge level={latestSample.monitoring_risk_level} size="lg" /> : <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-500">No data</span>}
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <MiniStat icon={Droplets} label="Accepted" value={fmt(latestSample?.accepted_detection_count ?? latestSample?.detected_particles)} />
+                  <MiniStat icon={Gauge} label="MSMI" value={num(latestSample?.msmi_score ?? latestSample?.mpi_score)} />
+                  <MiniStat icon={ShieldCheck} label="Hybrid" value={num(latestSample?.hybrid_filter_score, 1)} />
+                  <MiniStat icon={Eye} label="Quality" value={fmt(latestSample?.image_quality_status)} />
+                </div>
+                {latestSample?.processed_image_url ? (
+                  <img src={getMediaUrl(latestSample.processed_image_url)} alt="Latest processed sample" className="mt-4 h-40 w-full rounded-2xl border border-slate-100 object-cover sm:h-48" />
+                ) : (
+                  <div className="mt-4 flex h-40 items-center justify-center rounded-2xl border border-dashed border-cyan-200 bg-cyan-50/60 px-3 text-center text-sm font-bold text-cyan-700 sm:h-48">Processed preview appears here</div>
+                )}
+                {latestSample?.quality_warning && <p className="mt-3 rounded-2xl bg-amber-50 p-3 text-xs leading-5 text-amber-800">{latestSample.quality_warning}</p>}
+              </div>
+            </div>
           </div>
         </div>
       </section>
 
-      {/* Live Monitor + Latest Result */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Live Connection Monitor */}
-        <section>
-          <h2 className="text-base font-bold text-slate-700 mb-3 flex items-center gap-2">
-            <Wifi size={16} className="text-teal-500" /> Live Connection Monitor
-          </h2>
-          <div className="card p-5 space-y-1">
-            {[
-              { label: "Backend URL", value: API_BASE_URL, mono: true },
-              { label: "Frontend Port", value: "localhost:5173", mono: true },
-              { label: "Last Status Check", value: formatChecked(systemStatus.lastChecked) },
-              { label: "Backend Status", value: backendConnected ? "● Connected" : "● Offline" },
-              { label: "Database Status", value: databaseReady ? "● Ready" : "● Not reachable" },
-              { label: "Total Samples Stored", value: totalSamples != null ? totalSamples : "—" },
-            ].map(({ label, value, mono }) => (
-              <div key={label} className="flex justify-between items-center py-2 border-b border-slate-50">
-                <span className="text-xs text-slate-400">{label}</span>
-                <span className={`text-xs font-medium text-slate-700 ${mono ? "font-mono" : ""}`}>{value}</span>
-              </div>
-            ))}
-            {latestSample ? (
-              <>
-                {[
-                  { label: "Last Sample ID", value: `#${latestSample.id}` },
-                  { label: "Last Sample Source", value: latestSample.sample_source },
-                  { label: "Last Detected Particles", value: latestSample.detected_particles },
-                  { label: "Last MPI Score", value: latestSample.mpi_score },
-                  { label: "Last Risk Level", value: latestSample.monitoring_risk_level },
-                ].map(({ label, value }) => (
-                  <div key={label} className="flex justify-between items-center py-2 border-b border-slate-50 last:border-0">
-                    <span className="text-xs text-slate-400">{label}</span>
-                    <span className="text-xs font-medium text-slate-700">{value ?? "—"}</span>
-                  </div>
-                ))}
-              </>
-            ) : (
-              <div className="py-4 text-center">
-                <p className="text-xs text-slate-400">No sample analyzed yet.</p>
-                <Link to="/upload" className="text-xs text-teal-600 hover:underline mt-0.5 block">
-                  Use Manual Upload Mode for testing →
-                </Link>
-              </div>
-            )}
+      <section className="grid grid-cols-2 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-4">
+        {stats.map((item, index) => <HeroStat key={item.label} {...item} delay={`stagger-${index + 1}`} />)}
+      </section>
+
+      <section>
+        <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.22em] text-cyan-700">Operational Readiness</p>
+            <h2 className="mt-1 text-2xl font-black text-slate-950">System Modules</h2>
           </div>
-        </section>
-
-        {/* Latest Result Preview */}
-        <section>
-          <h2 className="text-base font-bold text-slate-700 mb-3 flex items-center gap-2">
-            <FlaskConical size={16} className="text-teal-500" /> Latest Result Preview
-          </h2>
-          {latestSample ? (
-            <div className="card p-5 space-y-4">
-              {latestSample.processed_image_url && (
-                <img
-                  src={getMediaUrl(latestSample.processed_image_url)}
-                  alt="Latest processed"
-                  className="w-full h-44 object-cover rounded-xl border border-slate-200"
-                  onError={(e) => { e.target.style.display = "none"; }}
-                />
-              )}
-              <div className="grid grid-cols-2 gap-3">
-                <div className="bg-teal-50 rounded-xl p-3 text-center">
-                  <div className="text-xl font-bold text-teal-700">{latestSample.detected_particles}</div>
-                  <div className="text-[10px] text-teal-500 font-medium">Detected Particles</div>
-                </div>
-                <div className="bg-blue-50 rounded-xl p-3 text-center">
-                  <div className="text-xl font-bold text-blue-700">{latestSample.mpi_score}</div>
-                  <div className="text-[10px] text-blue-500 font-medium">MPI Score</div>
-                </div>
-              </div>
-              <div className="flex items-center justify-between">
-                <RiskBadge level={latestSample.monitoring_risk_level} size="lg" />
-                <span className="text-xs text-slate-400 font-mono">{formatDate(latestSample.created_at)}</span>
-              </div>
-              {latestSample.recommendation && (
-                <p className="text-xs text-slate-500 bg-slate-50 px-3 py-2 rounded-lg border border-slate-100 leading-relaxed">
-                  {latestSample.recommendation}
-                </p>
-              )}
-              <Link
-                to="/history"
-                className="flex items-center justify-center gap-2 w-full py-2.5 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium rounded-xl transition-all"
-              >
-                <BarChart2 size={14} /> View History
-              </Link>
-            </div>
-          ) : (
-            <div className="card p-8 flex flex-col items-center justify-center text-center gap-3" style={{ minHeight: 260 }}>
-              <div className="w-14 h-14 rounded-2xl bg-slate-100 flex items-center justify-center">
-                <FlaskConical size={24} className="text-slate-300" />
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-slate-600">No sample analyzed yet</p>
-                <p className="text-xs text-slate-400 mt-1">Use Manual Upload Mode to test the pipeline</p>
-              </div>
-              <Link
-                to="/upload"
-                className="flex items-center gap-2 px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium rounded-xl transition-all"
-              >
-                <ExternalLink size={13} /> Go to Manual Upload
-              </Link>
-            </div>
-          )}
-        </section>
-      </div>
-
-      {/* Callout banner */}
-      <div className="bg-gradient-to-r from-teal-600 to-cyan-600 rounded-2xl p-5 shadow-sm">
-        <div className="flex items-start gap-3">
-          <Zap size={20} className="text-teal-200 flex-shrink-0 mt-0.5" />
-          <p className="text-sm text-teal-50 leading-relaxed">
-            <span className="font-bold text-white">Primary workflow:</span>{" "}
-            Hardware camera captures water sample image → MicroSense backend runs YOLOv5 detection → result is stored in database → dashboard displays latest monitoring status.{" "}
-            <span className="font-semibold text-teal-100">Manual upload is available only for testing and demo mode.</span>
-          </p>
+          <button onClick={onRefresh} disabled={checking} className="inline-flex w-fit items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-black text-slate-700 shadow-sm transition hover:-translate-y-0.5 hover:text-cyan-700 disabled:opacity-60">
+            <RefreshCw size={15} className={checking ? "animate-spin" : ""} /> Last checked {formatChecked(lastChecked)}
+          </button>
         </div>
-      </div>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {statusCards.map((card, index) => <StatusCard key={card.title} {...card} delay={index} />)}
+        </div>
+      </section>
+
+      <section className="rounded-3xl border border-cyan-100 bg-white/80 p-4 shadow-xl shadow-cyan-100/60 backdrop-blur-xl sm:rounded-[2rem] sm:p-6">
+        <div className="mb-6 flex items-center gap-3">
+          <div className="rounded-2xl bg-cyan-50 p-3 text-cyan-700"><Zap className="h-6 w-6" /></div>
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.22em] text-cyan-700">Pipeline Flow</p>
+            <h2 className="text-2xl font-black text-slate-950">From sample image to monitored insight</h2>
+          </div>
+        </div>
+        <div className="hidden items-center gap-0 lg:flex">
+          {pipeline.map((step, index) => <React.Fragment key={step.label}><PipelineStep {...step} index={index} />{index < pipeline.length - 1 && <div className="flex flex-1 items-center px-2"><div className="pipeline-line" /><ArrowRight className="h-4 w-4 shrink-0 text-cyan-500" /></div>}</React.Fragment>)}
+        </div>
+        <div className="grid gap-3 lg:hidden">
+          {pipeline.map((step, index) => <PipelineStep key={step.label} {...step} index={index} mobile />)}
+        </div>
+        <p className="mt-5 rounded-2xl bg-cyan-50/80 p-4 text-sm leading-7 text-slate-600">
+          Results represent microplastic-like particle candidates for prototype monitoring. The system does not chemically confirm polymer composition or provide regulatory-grade quantification.
+        </p>
+      </section>
+
+      <section>
+        <div className="mb-4">
+          <p className="text-xs font-black uppercase tracking-[0.22em] text-cyan-700">Core Capabilities</p>
+          <h2 className="mt-1 text-2xl font-black text-slate-950">MicroSense intelligence modules</h2>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {modules.map((m, index) => <FeatureCard key={m.title} {...m} index={index} />)}
+        </div>
+      </section>
     </div>
   );
 }
+
+function HeroStat({ icon: Icon, label, value, tone, delay }) {
+  const colors = { cyan: "from-cyan-50 to-white text-cyan-700", teal: "from-teal-50 to-white text-teal-700", emerald: "from-emerald-50 to-white text-emerald-700", amber: "from-amber-50 to-white text-amber-700" };
+  return <div className={`premium-card lift-card animate-slide-up ${delay} rounded-3xl p-4 sm:p-5`}><div className="flex items-start justify-between"><div className={`rounded-2xl bg-gradient-to-br ${colors[tone]} p-3 shadow-sm`}><Icon className="h-6 w-6" /></div><Activity className="h-4 w-4 text-slate-300" /></div><p className="mt-4 text-xs font-black uppercase tracking-[0.18em] text-slate-400">{label}</p><p className="mt-1 text-2xl font-black text-slate-950 sm:text-3xl">{value}</p></div>;
+}
+function MiniStat({ icon: Icon, label, value }) { return <div className="rounded-2xl border border-slate-100 bg-slate-50/80 p-3"><Icon className="mb-2 h-4 w-4 text-cyan-700" /><p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{label}</p><p className="mt-1 text-xl font-black text-slate-950">{value}</p></div>; }
+function PipelineStep({ icon: Icon, label, desc, index, mobile }) { return <div className={`lift-card flex ${mobile ? "items-center" : "min-w-[130px] flex-col items-center text-center"} gap-3 rounded-3xl border border-cyan-100 bg-white/85 p-4 shadow-sm animate-slide-up`} style={{ animationDelay: `${index * 80}ms` }}><div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-cyan-500 to-teal-500 text-white shadow-lg shadow-cyan-200"><Icon className="h-5 w-5" /></div><div><p className="text-sm font-black text-slate-900">{label}</p><p className="mt-1 text-xs text-slate-500">{desc}</p></div></div>; }
+function FeatureCard({ icon: Icon, title, text, index }) { return <div className="premium-card lift-card animate-slide-up rounded-3xl p-6" style={{ animationDelay: `${index * 70}ms` }}><div className="mb-5 flex h-12 w-12 items-center justify-center rounded-2xl bg-cyan-50 text-cyan-700 ring-1 ring-cyan-100"><Icon className="h-6 w-6" /></div><h3 className="text-lg font-black text-slate-950">{title}</h3><p className="mt-2 text-sm leading-7 text-slate-600">{text}</p></div>; }

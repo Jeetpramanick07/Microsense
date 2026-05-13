@@ -52,16 +52,17 @@ const colorMap = {
   },
 };
 
-export default function StatusCard({ icon: Icon, title, description, status, detail }) {
+export default function StatusCard({ icon: Icon, title, description, status, detail, delay = 0 }) {
   const cfg = statusConfig[status] || statusConfig.unknown;
   const colors = colorMap[cfg.color];
 
   return (
     <div
-      className={`card card-hover p-4 flex flex-col gap-3 animate-fade-in border ${colors.border}`}
+      className={`glass-card lift-card rounded-3xl p-4 flex flex-col gap-3 animate-slide-up border ${colors.border}`}
+      style={{ animationDelay: `${delay * 55}ms` }}
     >
       <div className="flex items-start justify-between gap-2">
-        <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${colors.icon}`}>
+        <div className={`w-10 h-10 rounded-2xl flex items-center justify-center flex-shrink-0 ${colors.icon}`}>
           <Icon size={18} />
         </div>
         <span className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${colors.badge}`}>
@@ -70,7 +71,7 @@ export default function StatusCard({ icon: Icon, title, description, status, det
         </span>
       </div>
       <div>
-        <div className="font-semibold text-slate-800 text-sm">{title}</div>
+        <div className="font-black text-slate-900 text-sm">{title}</div>
         <div className="text-slate-500 text-xs mt-0.5 leading-relaxed">{description}</div>
         {detail && (
           <div className="mt-1.5 font-mono text-[10px] text-slate-400 bg-slate-50 px-2 py-1 rounded border border-slate-100 truncate">

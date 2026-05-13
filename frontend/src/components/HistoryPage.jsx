@@ -1,43 +1,16 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import {
-  History, Search, Filter, RefreshCw, Loader2, AlertCircle, Upload,
-  ChevronUp, ChevronDown, Eye, Trash2, BarChart2, FlaskConical, TrendingUp,
-  ShieldCheck, ShieldAlert, ShieldX, Shield, Calendar
-} from "lucide-react";
-import { getSamples, deleteSample, getMediaUrl } from "../api.js";
+import { History, Search, Filter, RefreshCw, Loader2, AlertCircle, Upload, Eye, Trash2, FlaskConical, TrendingUp, ShieldCheck, ShieldAlert, ShieldX, Database, Cpu, Calendar, Gauge, Droplets, X, Image as ImageIcon } from "lucide-react";
+import { getSamples, deleteSample, getMediaUrl, getDetectorLabel } from "../api.js";
 import RiskBadge from "./RiskBadge.jsx";
-import SampleModal from "./SampleModal.jsx";
 
 const RISK_LEVELS = ["All", "Low", "Moderate", "High", "Critical"];
-
 const SORT_OPTIONS = [
   { value: "newest", label: "Newest First" },
   { value: "oldest", label: "Oldest First" },
   { value: "msmi_desc", label: "Highest MSMI" },
-  { value: "particles_desc", label: "Highest Particle Count" },
+  { value: "particles_desc", label: "Highest Candidate Count" },
 ];
-
-function SummaryCard({ icon: Icon, label, value, color }) {
-  const colors = {
-    teal: "bg-teal-50 text-teal-700 border-teal-100",
-    blue: "bg-blue-50 text-blue-700 border-blue-100",
-    emerald: "bg-emerald-50 text-emerald-700 border-emerald-100",
-    amber: "bg-amber-50 text-amber-700 border-amber-100",
-    red: "bg-red-50 text-red-700 border-red-100",
-    purple: "bg-purple-50 text-purple-700 border-purple-100",
-    slate: "bg-slate-50 text-slate-700 border-slate-100",
-  };
-  return (
-    <div className={`rounded-xl border p-4 ${colors[color] || colors.slate}`}>
-      <div className="flex items-center gap-2 mb-1">
-        <Icon size={14} />
-        <span className="text-[10px] font-semibold uppercase tracking-widest opacity-70">{label}</span>
-      </div>
-      <div className="text-2xl font-bold">{value ?? "—"}</div>
-    </div>
-  );
-}
 
 export default function HistoryPage() {
   const [samples, setSamples] = useState([]);
@@ -47,292 +20,87 @@ export default function HistoryPage() {
   const [searchSource, setSearchSource] = useState("");
   const [filterRisk, setFilterRisk] = useState("All");
   const [sortBy, setSortBy] = useState("newest");
+  const [deleting, setDeleting] = useState(null);
 
   const fetchSamples = async () => {
-    setLoading(true);
-    setError(null);
+    setLoading(true); setError(null);
     try {
-      const data = await getSamples();
+      const data = await getSamples({ limit: 200 });
       setSamples(Array.isArray(data) ? data : []);
     } catch (err) {
       setError(err.message || "Failed to fetch history");
-    } finally {
-      setLoading(false);
-    }
+    } finally { setLoading(false); }
   };
 
   useEffect(() => { fetchSamples(); }, []);
 
   const handleDelete = async (id) => {
-    await deleteSample(id);
-    setSamples((prev) => prev.filter((s) => s.id !== id));
+    if (!window.confirm(`Delete sample #${id}? This cannot be undone.`)) return;
+    try { setDeleting(id); await deleteSample(id); setSamples((prev)=>prev.filter((s)=>s.id!==id)); if (selectedSample?.id===id) setSelectedSample(null); }
+    finally { setDeleting(null); }
   };
 
-  // Summary stats
   const stats = useMemo(() => {
     const total = samples.length;
-    const riskCounts = { Low: 0, Moderate: 0, High: 0, Critical: 0 };
-    let totalParticles = 0;
-    let maxMpi = 0;
-    let totalQuality = 0;
-    let qualityCount = 0;
-    for (const s of samples) {
-      if (s.monitoring_risk_level in riskCounts) riskCounts[s.monitoring_risk_level]++;
-      totalParticles += s.detected_particles ?? 0;
-      if ((s.msmi_score ?? s.mpi_score ?? 0) > maxMpi) maxMpi = s.msmi_score ?? s.mpi_score ?? 0;
-      if (s.image_quality_score != null) { totalQuality += Number(s.image_quality_score); qualityCount++; }
-    }
-    const latestRisk = samples.length > 0
-      ? [...samples].sort((a, b) => new Date(b.created_at) - new Date(a.created_at))[0]?.monitoring_risk_level
-      : "—";
-    return {
-      total,
-      latestRisk,
-      avgParticles: total > 0 ? Math.round(totalParticles / total) : 0,
-      maxMpi,
-      avgQuality: qualityCount > 0 ? Math.round(totalQuality / qualityCount) : 0,
-      ...riskCounts,
-    };
+    const totalParticles = samples.reduce((sum,s)=>sum+(s.detected_particles||0),0);
+    const maxMsmi = samples.reduce((m,s)=>Math.max(m, Number(s.msmi_score ?? s.mpi_score ?? 0)),0);
+    const yolo26 = samples.filter((s)=>getDetectorLabel(s).includes("YOLO26n")).length;
+    const latest = [...samples].sort((a,b)=>new Date(b.created_at)-new Date(a.created_at))[0];
+    return { total, avgParticles: total ? Math.round(totalParticles/total) : 0, maxMsmi, yolo26, latestRisk: latest?.monitoring_risk_level || "—" };
   }, [samples]);
 
-  // Filtering + sorting
   const filtered = useMemo(() => {
     let arr = [...samples];
-    if (searchSource.trim()) {
-      const q = searchSource.trim().toLowerCase();
-      arr = arr.filter((s) => s.sample_source?.toLowerCase().includes(q));
-    }
-    if (filterRisk !== "All") {
-      arr = arr.filter((s) => s.monitoring_risk_level === filterRisk);
-    }
-    switch (sortBy) {
-      case "newest": arr.sort((a, b) => new Date(b.created_at) - new Date(a.created_at)); break;
-      case "oldest": arr.sort((a, b) => new Date(a.created_at) - new Date(b.created_at)); break;
-      case "msmi_desc": arr.sort((a, b) => (b.msmi_score ?? b.mpi_score ?? 0) - (a.msmi_score ?? a.mpi_score ?? 0)); break;
-      case "particles_desc": arr.sort((a, b) => (b.detected_particles ?? 0) - (a.detected_particles ?? 0)); break;
-    }
+    if (searchSource.trim()) arr = arr.filter((s)=>s.sample_source?.toLowerCase().includes(searchSource.trim().toLowerCase()));
+    if (filterRisk !== "All") arr = arr.filter((s)=>s.monitoring_risk_level === filterRisk);
+    if (sortBy === "newest") arr.sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
+    if (sortBy === "oldest") arr.sort((a,b)=>new Date(a.created_at)-new Date(b.created_at));
+    if (sortBy === "msmi_desc") arr.sort((a,b)=>(b.msmi_score ?? b.mpi_score ?? 0)-(a.msmi_score ?? a.mpi_score ?? 0));
+    if (sortBy === "particles_desc") arr.sort((a,b)=>(b.detected_particles ?? 0)-(a.detected_particles ?? 0));
     return arr;
   }, [samples, searchSource, filterRisk, sortBy]);
 
-  const formatDate = (dt) => {
-    if (!dt) return "—";
-    return new Date(dt).toLocaleString("en-IN", {
-      day: "2-digit", month: "short", year: "numeric",
-      hour: "2-digit", minute: "2-digit",
-    });
-  };
-
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8 animate-fade-in">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2 mb-1">
-            <span className="text-xs font-mono text-blue-600 bg-blue-50 border border-blue-100 px-2 py-0.5 rounded-full tracking-widest uppercase">
-              Database Records
-            </span>
+    <div className="relative mx-auto max-w-7xl space-y-6 px-3 py-5 sm:space-y-8 sm:px-6 sm:py-8 lg:px-8">
+      <div className="pointer-events-none absolute -left-20 top-24 h-80 w-80 rounded-full bg-cyan-200/25 blur-3xl float-slow" />
+      <section className="rounded-3xl border border-cyan-100 bg-white/80 p-4 shadow-2xl shadow-cyan-100/60 backdrop-blur-2xl sm:rounded-[2rem] sm:p-8 soft-grid">
+        <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-cyan-200 bg-cyan-50 px-4 py-2 text-xs font-black uppercase tracking-[0.2em] text-cyan-700"><Database className="h-4 w-4"/> Database Records</div>
+            <h1 className="text-[2rem] font-black leading-tight tracking-tight text-slate-950 sm:text-5xl">Sample intelligence history</h1>
+            <p className="mt-3 max-w-3xl text-base leading-7 text-slate-600">Browse YOLO26n main detector outputs, baseline comparisons, hybrid validation and MSMI monitoring records.</p>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">
-            Testing History
-          </h1>
-          <p className="text-slate-500 mt-1 text-sm">
-            All analyzed samples stored in the MicroSense database · {samples.length} total records
-          </p>
+          <div className="flex gap-3">
+            <Link to="/upload" className="inline-flex items-center gap-2 rounded-2xl bg-cyan-600 px-4 py-3 text-sm font-black text-white shadow-lg shadow-cyan-200 transition hover:-translate-y-0.5"><Upload className="h-4 w-4"/> Analyze</Link>
+            <button onClick={fetchSamples} disabled={loading} className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-black text-slate-700 shadow-sm transition hover:-translate-y-0.5 hover:text-cyan-700"><RefreshCw className={`h-4 w-4 ${loading?'animate-spin':''}`}/> Refresh</button>
+          </div>
         </div>
-        <button
-          onClick={fetchSamples}
-          disabled={loading}
-          className="flex items-center gap-2 px-4 py-2 bg-white hover:bg-slate-50 text-slate-700 text-sm font-medium rounded-xl border border-slate-200 disabled:opacity-50 transition-all shadow-sm self-start sm:self-auto"
-        >
-          <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
-          {loading ? "Loading..." : "Refresh"}
-        </button>
-      </div>
+      </section>
 
-      {/* Summary Cards */}
-      {!loading && !error && samples.length > 0 && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3 animate-slide-up">
-          <div className="col-span-2 sm:col-span-2">
-            <SummaryCard icon={FlaskConical} label="Total Tests" value={stats.total} color="teal" />
-          </div>
-          <div className="col-span-2 sm:col-span-2">
-            <SummaryCard icon={TrendingUp} label="Avg Particles" value={stats.avgParticles} color="blue" />
-          </div>
-          <div className="col-span-2 sm:col-span-2">
-            <SummaryCard icon={BarChart2} label="Highest MSMI" value={stats.maxMpi} color="amber" />
-          </div>
-          <div className="col-span-2 sm:col-span-2">
-            <SummaryCard icon={Shield} label="Latest Risk" value={stats.latestRisk} color="slate" />
-          </div>
-          <div className="col-span-2 sm:col-span-2">
-            <SummaryCard icon={BarChart2} label="Avg Quality" value={stats.avgQuality} color="blue" />
-          </div>
-          <div className="col-span-1 sm:col-span-2 lg:col-span-2">
-            <SummaryCard icon={ShieldCheck} label="Low Risk" value={stats.Low} color="emerald" />
-          </div>
-          <div className="col-span-1 sm:col-span-2 lg:col-span-2">
-            <SummaryCard icon={ShieldAlert} label="Moderate" value={stats.Moderate} color="amber" />
-          </div>
-          <div className="col-span-1 sm:col-span-2 lg:col-span-2">
-            <SummaryCard icon={ShieldX} label="High Risk" value={stats.High} color="red" />
-          </div>
-          <div className="col-span-1 sm:col-span-2 lg:col-span-2">
-            <SummaryCard icon={ShieldX} label="Critical" value={stats.Critical} color="purple" />
-          </div>
-        </div>
-      )}
+      {!loading && !error && samples.length > 0 && <section className="grid grid-cols-2 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-5"><Summary icon={FlaskConical} label="Total Tests" value={stats.total}/><Summary icon={TrendingUp} label="Avg Candidates" value={stats.avgParticles}/><Summary icon={Gauge} label="Highest MSMI" value={stats.maxMsmi}/><Summary icon={Cpu} label="YOLO26n Runs" value={stats.yolo26}/><Summary icon={ShieldCheck} label="Latest Risk" value={stats.latestRisk}/></section>}
 
-      {/* Filters */}
-      <div className="flex flex-col sm:flex-row gap-3">
-        <div className="relative flex-1">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input
-            type="text"
-            placeholder="Search by sample source..."
-            value={searchSource}
-            onChange={(e) => setSearchSource(e.target.value)}
-            className="w-full pl-9 pr-3 py-2.5 text-sm rounded-xl border border-slate-200 bg-white text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-300 focus:border-teal-300 transition-all"
-          />
+      <section className="glass-card rounded-3xl p-4 sm:rounded-[2rem] sm:p-5">
+        <div className="grid gap-3 lg:grid-cols-[1fr_auto_auto]">
+          <div className="relative"><Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"/><input value={searchSource} onChange={(e)=>setSearchSource(e.target.value)} placeholder="Search by sample source..." className="input-dynamic pl-11"/></div>
+          <div className="relative"><Filter className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"/><select value={filterRisk} onChange={(e)=>setFilterRisk(e.target.value)} className="input-dynamic w-full min-w-0 pl-11 lg:min-w-[180px]">{RISK_LEVELS.map((r)=><option key={r} value={r}>{r === 'All' ? 'All Risk Levels' : r}</option>)}</select></div>
+          <select value={sortBy} onChange={(e)=>setSortBy(e.target.value)} className="input-dynamic w-full min-w-0 lg:min-w-[190px]">{SORT_OPTIONS.map((o)=><option key={o.value} value={o.value}>{o.label}</option>)}</select>
         </div>
-        <div className="relative">
-          <Filter size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-          <select
-            value={filterRisk}
-            onChange={(e) => setFilterRisk(e.target.value)}
-            className="pl-9 pr-4 py-2.5 text-sm rounded-xl border border-slate-200 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-teal-300 focus:border-teal-300 transition-all appearance-none cursor-pointer"
-          >
-            {RISK_LEVELS.map((r) => <option key={r} value={r}>{r === "All" ? "All Risk Levels" : r}</option>)}
-          </select>
-        </div>
-        <div className="relative">
-          <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-          <select
-            value={sortBy}
-            onChange={(e) => setSortBy(e.target.value)}
-            className="pl-3 pr-8 py-2.5 text-sm rounded-xl border border-slate-200 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-teal-300 focus:border-teal-300 transition-all appearance-none cursor-pointer"
-          >
-            {SORT_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-          </select>
-        </div>
-      </div>
+      </section>
 
-      {/* Content */}
-      {loading ? (
-        <div className="flex flex-col items-center justify-center py-20 gap-3">
-          <Loader2 size={28} className="text-teal-500 animate-spin" />
-          <p className="text-sm text-slate-500">Loading history from database...</p>
-        </div>
-      ) : error ? (
-        <div className="flex flex-col items-center justify-center py-20 gap-3">
-          <AlertCircle size={28} className="text-red-400" />
-          <p className="text-sm font-semibold text-slate-700">Could not load history</p>
-          <p className="text-xs text-slate-400">{error}</p>
-          <button onClick={fetchSamples} className="mt-2 text-xs text-teal-600 hover:underline flex items-center gap-1">
-            <RefreshCw size={12} /> Try again
-          </button>
-        </div>
-      ) : samples.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-20 gap-3">
-          <div className="w-16 h-16 rounded-2xl bg-slate-100 flex items-center justify-center">
-            <History size={28} className="text-slate-300" />
-          </div>
-          <p className="text-sm font-semibold text-slate-700">No test records found</p>
-          <p className="text-xs text-slate-400">Analyze a sample from Manual Upload Mode to create your first record.</p>
-          <Link to="/upload" className="mt-2 flex items-center gap-1 text-xs text-teal-600 hover:underline">
-            <Upload size={12} /> Go to Manual Upload
-          </Link>
-        </div>
-      ) : filtered.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-16 gap-2">
-          <p className="text-sm font-semibold text-slate-700">No results match your filters</p>
-          <button onClick={() => { setSearchSource(""); setFilterRisk("All"); }} className="text-xs text-teal-600 hover:underline">
-            Clear filters
-          </button>
-        </div>
-      ) : (
-        <div className="space-y-3 animate-slide-up">
-          {filtered.map((s) => (
-            <div
-              key={s.id}
-              className="card card-hover p-4 flex flex-col sm:flex-row sm:items-center gap-4"
-            >
-              {/* Thumbnail */}
-              <div className="flex-shrink-0">
-                {s.processed_image_url ? (
-                  <img
-                    src={getMediaUrl(s.processed_image_url)}
-                    alt={`Sample ${s.id}`}
-                    className="w-16 h-16 object-cover rounded-xl border border-slate-200"
-                    onError={(e) => {
-                      e.target.style.display = "none";
-                    }}
-                  />
-                ) : (
-                  <div className="w-16 h-16 rounded-xl bg-slate-100 flex items-center justify-center">
-                    <FlaskConical size={18} className="text-slate-300" />
-                  </div>
-                )}
-              </div>
-
-              {/* Main Info */}
-              <div className="flex-1 min-w-0">
-                <div className="flex flex-wrap items-center gap-2 mb-1">
-                  <span className="text-xs font-mono text-slate-400">#{s.id}</span>
-                  <span className="text-sm font-semibold text-slate-800 truncate">{s.sample_source}</span>
-                  <RiskBadge level={s.monitoring_risk_level} />
-                </div>
-                <div className="flex flex-wrap gap-x-4 gap-y-1">
-                  <span className="text-xs text-slate-500 flex items-center gap-1">
-                    <Calendar size={10} /> {formatDate(s.created_at)}
-                  </span>
-                </div>
-              </div>
-
-              {/* Metrics */}
-              <div className="flex gap-4 flex-shrink-0">
-                <div className="text-center">
-                  <div className="text-lg font-bold text-cyan-700">{s.msmi_score ?? s.mpi_score ?? "—"}</div>
-                  <div className="text-[10px] text-slate-400">MSMI</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-lg font-bold text-teal-700">{s.detected_particles ?? "—"}</div>
-                  <div className="text-[10px] text-slate-400">Particles</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-lg font-bold text-blue-700">{s.image_quality_score != null ? Number(s.image_quality_score).toFixed(0) : "—"}</div>
-                  <div className="text-[10px] text-slate-400">Quality</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-lg font-bold text-slate-700">{s.confidence_score != null ? `${s.confidence_score}%` : "—"}</div>
-                  <div className="text-[10px] text-slate-400">Confidence</div>
-                </div>
-              </div>
-
-              {/* Actions */}
-              <div className="flex gap-2 flex-shrink-0">
-                <button
-                  onClick={() => setSelectedSample(s)}
-                  className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-teal-700 bg-teal-50 hover:bg-teal-100 border border-teal-200 rounded-lg transition-all"
-                >
-                  <Eye size={12} /> Details
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Detail Modal */}
-      {selectedSample && (
-        <SampleModal
-          sample={selectedSample}
-          onClose={() => setSelectedSample(null)}
-          onDelete={async (id) => {
-            await handleDelete(id);
-            setSelectedSample(null);
-          }}
-        />
-      )}
+      {loading ? <LoadingState /> : error ? <ErrorState error={error} onRetry={fetchSamples} /> : filtered.length === 0 ? <EmptyState /> : <div className="grid gap-4 lg:grid-cols-2">{filtered.map((sample, index)=><SampleCard key={sample.id} sample={sample} index={index} onView={()=>setSelectedSample(sample)} onDelete={()=>handleDelete(sample.id)} deleting={deleting===sample.id}/>)}</div>}
+      {selectedSample && <DetailsModal sample={selectedSample} onClose={()=>setSelectedSample(null)} onDelete={()=>handleDelete(selectedSample.id)} deleting={deleting===selectedSample.id} />}
     </div>
   );
 }
+
+function Summary({icon:Icon,label,value}){ return <div className="premium-card lift-card rounded-3xl p-4 sm:p-5"><Icon className="mb-4 h-6 w-6 text-cyan-700"/><p className="text-xs font-black uppercase tracking-widest text-slate-400">{label}</p><p className="mt-1 text-2xl font-black text-slate-950 sm:text-3xl">{value ?? '—'}</p></div>; }
+function SampleCard({sample,index,onView,onDelete,deleting}){ const detector=getDetectorLabel(sample); return <div className="premium-card lift-card animate-slide-up overflow-hidden rounded-[2rem]" style={{animationDelay:`${index*55}ms`}}><div className="grid sm:grid-cols-[170px_1fr]"><div className="relative min-h-48 bg-cyan-50 scan-line">{sample.processed_image_url?<img src={getMediaUrl(sample.processed_image_url)} alt="Processed" className="h-full min-h-48 w-full object-cover"/>:<div className="flex h-full min-h-48 items-center justify-center text-cyan-700"><ImageIcon className="h-10 w-10"/></div>}<div className="absolute left-3 top-3 rounded-full bg-white/90 px-3 py-1 text-xs font-black text-cyan-700 shadow-sm">#{sample.id}</div></div><div className="p-5"><div className="mb-3 flex items-start justify-between gap-3"><div><h3 className="text-xl font-black text-slate-950">{sample.sample_source}</h3><p className="mt-1 flex items-center gap-1.5 text-xs font-semibold text-slate-500"><Calendar className="h-3.5 w-3.5"/>{formatDate(sample.created_at)}</p></div><RiskBadge level={sample.monitoring_risk_level}/></div><div className="mb-4 inline-flex items-center gap-2 rounded-full bg-cyan-50 px-3 py-1 text-xs font-black text-cyan-700"><Cpu className="h-3.5 w-3.5"/>{detector}</div><div className="grid grid-cols-3 gap-2"><Tiny label="Candidates" value={sample.detected_particles}/><Tiny label="MSMI" value={sample.msmi_score ?? sample.mpi_score}/><Tiny label="Hybrid" value={sample.hybrid_filter_score}/></div><div className="mt-4 flex gap-2"><button onClick={onView} className="inline-flex flex-1 items-center justify-center gap-2 rounded-2xl bg-cyan-600 px-3 py-2.5 text-xs font-black text-white shadow-md transition hover:-translate-y-0.5"><Eye className="h-4 w-4"/> Details</button><button onClick={onDelete} disabled={deleting} className="inline-flex items-center justify-center rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2.5 text-rose-700 transition hover:-translate-y-0.5"><Trash2 className="h-4 w-4"/></button></div></div></div></div>; }
+function DetailsModal({sample,onClose,onDelete,deleting}){ return <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/40 p-2 backdrop-blur-sm sm:items-center sm:p-4"><div className="max-h-[94vh] w-full max-w-5xl overflow-y-auto rounded-3xl bg-white p-4 shadow-2xl animate-scale-in sm:max-h-[90vh] sm:rounded-[2rem] sm:p-5"><div className="mb-5 flex items-start justify-between"><div><p className="text-xs font-black uppercase tracking-[0.2em] text-cyan-700">Sample #{sample.id}</p><h2 className="text-2xl font-black text-slate-950 sm:text-3xl">{sample.sample_source}</h2><p className="mt-1 text-sm text-slate-500">{formatDate(sample.created_at)} · {getDetectorLabel(sample)}</p></div><button onClick={onClose} className="rounded-2xl border border-slate-200 p-2 text-slate-500 hover:bg-slate-50"><X className="h-5 w-5"/></button></div><div className="grid gap-4 lg:grid-cols-2"><ImagePanel title="Original Image" url={sample.original_image_url}/><ImagePanel title="Processed Image" url={sample.processed_image_url}/></div><div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4"><TinyBig label="Detected" value={sample.detected_particles}/><TinyBig label="MSMI" value={sample.msmi_score ?? sample.mpi_score}/><TinyBig label="Hybrid Score" value={sample.hybrid_filter_score}/><TinyBig label="Image Quality" value={sample.image_quality_status}/></div><div className="mt-5 grid gap-4 lg:grid-cols-2"><InfoPanel title="Hybrid AI Validation" rows={[['Raw Candidates',sample.raw_detection_count],['Accepted',sample.accepted_detection_count],['Rejected',sample.rejected_detection_count],['Summary',sample.filter_summary]]}/><InfoPanel title="Image Quality" rows={[['Score',sample.image_quality_score],['Focus',sample.focus_score],['Brightness',sample.brightness_score],['Contrast',sample.contrast_score],['Warning',sample.quality_warning]]}/><InfoPanel title="Source-Aware MSMI" rows={[['Risk',sample.monitoring_risk_level],['Concentration Risk',sample.concentration_only_risk_level],['Source Factor',sample.source_risk_factor],['Recommendation',sample.recommendation]]}/><InfoPanel title="Particle Details" rows={[['Particles / Litre',sample.estimated_particles_per_litre],['Average Area',sample.average_particle_area],['Average Brightness',sample.average_brightness],['Size Category',sample.size_category]]}/></div><div className="mt-5 flex justify-end gap-2"><button onClick={onDelete} disabled={deleting} className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-black text-rose-700">{deleting?'Deleting...':'Delete Record'}</button><button onClick={onClose} className="rounded-2xl bg-cyan-600 px-4 py-2 text-sm font-black text-white">Close</button></div></div></div>; }
+function ImagePanel({title,url}){ return <div className="rounded-3xl border border-slate-200 bg-slate-50 p-3"><p className="mb-2 text-sm font-black text-slate-900">{title}</p>{url?<img src={getMediaUrl(url)} alt={title} className="max-h-60 w-full rounded-2xl object-contain sm:max-h-80"/>:<div className="flex h-56 items-center justify-center text-slate-400">No image</div>}</div>; }
+function InfoPanel({title,rows}){ return <div className="rounded-3xl border border-slate-200 bg-white p-4"><h3 className="mb-3 text-sm font-black text-slate-950">{title}</h3>{rows.map(([k,v])=><div key={k} className="mb-3"><p className="text-xs font-black uppercase tracking-wide text-slate-400">{k}</p><p className="mt-1 text-sm font-bold leading-6 text-slate-800">{v ?? '—'}</p></div>)}</div>; }
+function Tiny({label,value}){ return <div className="rounded-2xl bg-slate-50 p-2 text-center"><p className="text-[10px] font-black uppercase text-slate-400">{label}</p><p className="mt-1 text-lg font-black text-slate-950">{value??'—'}</p></div>; }
+function TinyBig({label,value}){ return <div className="rounded-3xl border border-cyan-100 bg-cyan-50 p-4"><p className="text-xs font-black uppercase tracking-wide text-cyan-700">{label}</p><p className="mt-1 text-2xl font-black text-slate-950">{value??'—'}</p></div>; }
+function LoadingState(){ return <div className="flex flex-col items-center justify-center rounded-[2rem] border border-cyan-100 bg-white/80 py-20 shadow-sm"><Loader2 className="h-10 w-10 animate-spin text-cyan-600"/><p className="mt-4 text-sm font-bold text-slate-500">Loading sample intelligence...</p></div>; }
+function ErrorState({error,onRetry}){ return <div className="rounded-[2rem] border border-rose-200 bg-rose-50 p-6 text-rose-800"><div className="flex gap-3"><AlertCircle/><div><p className="font-black">Unable to load history</p><p className="mt-1 text-sm">{error}</p><button onClick={onRetry} className="mt-4 rounded-2xl bg-rose-600 px-4 py-2 text-sm font-black text-white">Retry</button></div></div></div>; }
+function EmptyState(){ return <div className="rounded-[2rem] border border-dashed border-cyan-200 bg-cyan-50/60 p-12 text-center"><History className="mx-auto h-12 w-12 text-cyan-700"/><h3 className="mt-4 text-2xl font-black text-slate-950">No sample records yet</h3><p className="mt-2 text-slate-500">Analyze your first water sample to populate history.</p><Link to="/upload" className="mt-5 inline-flex rounded-2xl bg-cyan-600 px-5 py-3 text-sm font-black text-white">Analyze Sample</Link></div>; }
+function formatDate(dt){ if(!dt) return '—'; return new Date(dt).toLocaleString('en-IN',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}); }
