@@ -9,12 +9,16 @@ from fastapi.staticfiles import StaticFiles
 from app.config import CORS_ORIGINS, UPLOAD_DIR, create_dirs
 from app.database import init_db
 from app.routes import health, samples, analytics, camera, device
+from app.db_migration import run_safe_migrations
 
 # Ensure upload/report directories exist before anything else
 create_dirs()
 
 # Initialize DB tables
 init_db()
+
+# Add missing columns for deployed databases
+run_safe_migrations()
 
 app = FastAPI(
     title="MicroSense AI-Cam API",
