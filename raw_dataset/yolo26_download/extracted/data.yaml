@@ -1,0 +1,13 @@
+train: ../train/images
+val: ../valid/images
+test: ../test/images
+
+nc: 1
+names: ['Microplastic Particle']
+
+roboflow:
+  workspace: jeet-pramanick
+  project: microplastic-detection-sgbkj-lyh7w
+  version: 1
+  license: CC BY 4.0
+  url: https://universe.roboflow.com/jeet-pramanick/microplastic-detection-sgbkj-lyh7w/dataset/1
