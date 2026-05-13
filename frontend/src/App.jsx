@@ -100,7 +100,7 @@ function AppInner() {
       <footer className="border-t border-slate-200 bg-white/80 py-4 px-6 text-center">
         <p className="text-xs text-slate-400">
           MicroSense AI-Cam · Hardware-linked AI microplastic monitoring prototype ·{" "}
-          <span className="font-mono">FastAPI + YOLOv5 + React</span>
+          <span className="font-mono">FastAPI + YOLO26n + Hybrid validation + React</span>
         </p>
       </footer>
     </div>

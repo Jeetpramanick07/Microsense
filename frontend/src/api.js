@@ -52,15 +52,12 @@ export async function getLatestSample() {
       signal: AbortSignal.timeout(5000),
     });
 
-    // Empty database or backend says no latest sample
     if (response.status === 404) return null;
     if (response.status === 204) return null;
-
     if (!response.ok) return null;
 
     const data = await response.json();
 
-    // Backend permanent fix may return null
     if (!data) return null;
 
     return data;
@@ -112,6 +109,7 @@ export async function analyzeSample({
   sampleSource,
   chamberVolumeMl,
   notes,
+  detectorModel = "yolo26",
 }) {
   const formData = new FormData();
 
@@ -123,7 +121,12 @@ export async function analyzeSample({
     formData.append("notes", notes);
   }
 
-  const response = await safeFetch(`${API_BASE_URL}/api/samples/analyze-image`, {
+  const endpoint =
+    detectorModel === "yolov5"
+      ? "/api/samples/analyze-image"
+      : "/api/samples/analyze-image-yolo26";
+
+  const response = await safeFetch(`${API_BASE_URL}${endpoint}`, {
     method: "POST",
     body: formData,
     headers: {
@@ -136,6 +139,8 @@ export async function analyzeSample({
 
     console.error("Analyze API failed:", {
       status: response.status,
+      endpoint,
+      detectorModel,
       errorData,
     });
 
@@ -149,4 +154,15 @@ export async function analyzeSample({
   }
 
   return response.json();
+}
+
+export function getDetectorLabel(sample) {
+  const notes = String(sample?.notes || "").toLowerCase();
+  const processedUrl = String(sample?.processed_image_url || "").toLowerCase();
+
+  if (notes.includes("yolo26") || processedUrl.includes("yolo26")) {
+    return "YOLO26n Main Detector";
+  }
+
+  return "YOLOv5 Baseline";
 }

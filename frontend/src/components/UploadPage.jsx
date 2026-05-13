@@ -12,15 +12,17 @@ import {
   Activity,
   Droplets,
   ShieldCheck,
-  Eye,
   Microscope,
   Gauge,
   Sparkles,
   AlertTriangle,
   Waves,
+  Cpu,
+  CheckCircle,
+  XCircle,
 } from "lucide-react";
 import { Link } from "react-router-dom";
-import { analyzeSample, getMediaUrl } from "../api";
+import { analyzeSample, getMediaUrl, getDetectorLabel } from "../api";
 
 const formatValue = (value, suffix = "") => {
   if (value === null || value === undefined || value === "") return "—";
@@ -37,6 +39,7 @@ export default function UploadPage() {
   const [sampleSource, setSampleSource] = useState("Tap Water");
   const [chamberVolumeMl, setChamberVolumeMl] = useState(50);
   const [notes, setNotes] = useState("");
+  const [detectorModel, setDetectorModel] = useState("yolo26");
   const [result, setResult] = useState(null);
   const [isDragging, setIsDragging] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -124,6 +127,7 @@ export default function UploadPage() {
     setNotes("");
     setSampleSource("Tap Water");
     setChamberVolumeMl(50);
+    setDetectorModel("yolo26");
   };
 
   const handleFile = (selectedFile) => {
@@ -194,18 +198,27 @@ export default function UploadPage() {
         sampleSource,
         chamberVolumeMl,
         notes,
+        detectorModel,
       });
 
       setResult(data);
-      setSuccessMessage("Analysis completed and stored in database.");
+      setSuccessMessage(
+        detectorModel === "yolo26"
+          ? "Analysis completed using YOLO26n Main Detector and stored in database."
+          : "Baseline analysis completed using YOLOv5 and stored in database."
+      );
     } catch (err) {
-      setError(err?.message || "Failed to analyze image. Make sure the FastAPI backend is reachable.");
+      setError(
+        err?.message ||
+          "Failed to analyze image. Make sure the FastAPI backend is reachable."
+      );
     } finally {
       setIsAnalyzing(false);
     }
   };
 
   const riskStyle = getRiskStyle(result?.monitoring_risk_level);
+  const detectorLabel = result ? getDetectorLabel(result) : "YOLO26n Main Detector";
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-cyan-50 to-teal-50 text-slate-900">
@@ -217,9 +230,11 @@ export default function UploadPage() {
             </div>
 
             <div>
-              <h1 className="text-xl font-bold tracking-tight text-slate-950">Manual Sample Upload</h1>
+              <h1 className="text-xl font-bold tracking-tight text-slate-950">
+                Manual Sample Upload
+              </h1>
               <p className="text-sm text-slate-500">
-                AI detection, MSMI scoring, source weighting and image-quality validation.
+                YOLO26n main detection, MSMI scoring, source weighting and hybrid validation.
               </p>
             </div>
           </div>
@@ -250,7 +265,7 @@ export default function UploadPage() {
             <div>
               <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-cyan-200 bg-cyan-50 px-3 py-1 text-xs font-semibold text-cyan-700">
                 <Sparkles className="h-4 w-4" />
-                Phase 1A Research Mode
+                YOLO26n Main Pipeline
               </div>
 
               <h2 className="text-3xl font-bold tracking-tight text-slate-950">
@@ -258,15 +273,24 @@ export default function UploadPage() {
               </h2>
 
               <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600">
-                The backend now combines YOLOv5 detection, MicroSense Monitoring Index,
-                source-based risk weighting and image quality validation. The score is a
-                prototype monitoring index, not a certified health safety result.
+                MicroSense AI-Cam now uses YOLO26n as the main detection engine,
+                combined with image-quality scoring, source-based risk weighting,
+                MSMI calculation and hybrid AI validation. Results are prototype
+                screening outputs, not certified polymer identification or regulatory-grade quantification.
               </p>
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
-              <FeaturePill icon={<Database className="h-5 w-5" />} title="Database enabled" text="Every result is stored and available in History." />
-              <FeaturePill icon={<Microscope className="h-5 w-5" />} title="Quality-aware AI" text="Poor focus, darkness and exposure are now reported." />
+              <FeaturePill
+                icon={<Cpu className="h-5 w-5" />}
+                title="YOLO26n main detector"
+                text="Cleaner particle-candidate detection with YOLOv5 retained as baseline."
+              />
+              <FeaturePill
+                icon={<Microscope className="h-5 w-5" />}
+                title="Hybrid validation"
+                text="Contrast, edge clarity, compactness and area are checked after detection."
+              />
             </div>
           </div>
         </section>
@@ -292,10 +316,17 @@ export default function UploadPage() {
         )}
 
         <div className="grid gap-8 lg:grid-cols-[0.9fr_1.1fr]">
-          <form onSubmit={handleAnalyze} className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+          <form
+            onSubmit={handleAnalyze}
+            className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm"
+          >
             <div className="mb-6">
-              <h3 className="text-lg font-bold text-slate-950">Upload sample image</h3>
-              <p className="mt-1 text-sm text-slate-500">Select a microscope/camera image of the water sample.</p>
+              <h3 className="text-lg font-bold text-slate-950">
+                Upload sample image
+              </h3>
+              <p className="mt-1 text-sm text-slate-500">
+                Select a microscope/camera image of the water sample.
+              </p>
             </div>
 
             <div
@@ -308,28 +339,95 @@ export default function UploadPage() {
                   : "border-slate-200 bg-slate-50 hover:border-cyan-300 hover:bg-cyan-50/50"
               }`}
             >
-              <input type="file" accept="image/*" onChange={handleFileInput} className="absolute inset-0 cursor-pointer opacity-0" />
+              <input
+                type="file"
+                accept="image/*"
+                onChange={handleFileInput}
+                className="absolute inset-0 cursor-pointer opacity-0"
+              />
 
               {previewUrl ? (
                 <div className="w-full">
-                  <img src={previewUrl} alt="Selected sample preview" className="mx-auto max-h-72 rounded-2xl border border-slate-200 object-contain shadow-sm" />
-                  <p className="mt-4 text-sm font-medium text-slate-700">{file?.name}</p>
-                  <p className="mt-1 text-xs text-slate-500">Click or drop another image to replace this sample.</p>
+                  <img
+                    src={previewUrl}
+                    alt="Selected sample preview"
+                    className="mx-auto max-h-72 rounded-2xl border border-slate-200 object-contain shadow-sm"
+                  />
+                  <p className="mt-4 text-sm font-medium text-slate-700">
+                    {file?.name}
+                  </p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Click or drop another image to replace this sample.
+                  </p>
                 </div>
               ) : (
                 <>
                   <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-3xl bg-cyan-100 text-cyan-700">
                     <Upload className="h-8 w-8" />
                   </div>
-                  <p className="text-base font-semibold text-slate-900">Drop image here or click to browse</p>
-                  <p className="mt-2 text-sm text-slate-500">Supports JPG, PNG, JPEG and other browser-supported image formats.</p>
+                  <p className="text-base font-semibold text-slate-900">
+                    Drop image here or click to browse
+                  </p>
+                  <p className="mt-2 text-sm text-slate-500">
+                    Supports JPG, PNG, JPEG and other browser-supported image formats.
+                  </p>
                 </>
               )}
             </div>
 
+            <div className="mt-6">
+              <label className="mb-2 block text-sm font-semibold text-slate-700">
+                Detection Engine
+              </label>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={() => setDetectorModel("yolo26")}
+                  className={`rounded-2xl border px-4 py-3 text-left transition-all ${
+                    detectorModel === "yolo26"
+                      ? "border-cyan-500 bg-cyan-50 shadow-md ring-4 ring-cyan-100"
+                      : "border-slate-200 bg-white hover:bg-slate-50"
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <Cpu className="h-4 w-4 text-cyan-700" />
+                    <p className="font-bold text-slate-900">
+                      YOLO26n Main Detector
+                    </p>
+                  </div>
+                  <p className="mt-1 text-xs leading-5 text-slate-500">
+                    Default pipeline for cleaner microplastic-like candidate detection.
+                  </p>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setDetectorModel("yolov5")}
+                  className={`rounded-2xl border px-4 py-3 text-left transition-all ${
+                    detectorModel === "yolov5"
+                      ? "border-slate-700 bg-slate-100 shadow-md ring-4 ring-slate-100"
+                      : "border-slate-200 bg-white hover:bg-slate-50"
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <BarChart3 className="h-4 w-4 text-slate-700" />
+                    <p className="font-bold text-slate-900">
+                      YOLOv5 Baseline
+                    </p>
+                  </div>
+                  <p className="mt-1 text-xs leading-5 text-slate-500">
+                    Legacy baseline route for model comparison.
+                  </p>
+                </button>
+              </div>
+            </div>
+
             <div className="mt-6 grid gap-5">
               <div>
-                <label className="mb-2 block text-sm font-semibold text-slate-700">Sample Source</label>
+                <label className="mb-2 block text-sm font-semibold text-slate-700">
+                  Sample Source
+                </label>
                 <input
                   value={sampleSource}
                   onChange={(event) => setSampleSource(event.target.value)}
@@ -339,7 +437,9 @@ export default function UploadPage() {
               </div>
 
               <div>
-                <label className="mb-2 block text-sm font-semibold text-slate-700">Chamber Volume (mL)</label>
+                <label className="mb-2 block text-sm font-semibold text-slate-700">
+                  Chamber Volume (mL)
+                </label>
                 <input
                   type="number"
                   min="1"
@@ -350,7 +450,9 @@ export default function UploadPage() {
               </div>
 
               <div>
-                <label className="mb-2 block text-sm font-semibold text-slate-700">Notes</label>
+                <label className="mb-2 block text-sm font-semibold text-slate-700">
+                  Notes
+                </label>
                 <textarea
                   value={notes}
                   onChange={(event) => setNotes(event.target.value)}
@@ -370,12 +472,16 @@ export default function UploadPage() {
                 {isAnalyzing ? (
                   <>
                     <Loader2 className="h-5 w-5 animate-spin" />
-                    Analyzing with YOLO...
+                    {detectorModel === "yolo26"
+                      ? "Analyzing with YOLO26n..."
+                      : "Analyzing with YOLOv5..."}
                   </>
                 ) : (
                   <>
                     <Activity className="h-5 w-5" />
-                    Analyze with YOLO
+                    {detectorModel === "yolo26"
+                      ? "Analyze with YOLO26n"
+                      : "Analyze with YOLOv5"}
                   </>
                 )}
               </button>
@@ -398,64 +504,200 @@ export default function UploadPage() {
                 <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-3xl bg-white text-slate-500 shadow-sm">
                   <ImageIcon className="h-8 w-8" />
                 </div>
-                <h3 className="text-lg font-bold text-slate-950">Result preview</h3>
+                <h3 className="text-lg font-bold text-slate-950">
+                  Result preview
+                </h3>
                 <p className="mt-2 max-w-md text-sm leading-6 text-slate-500">
-                  After analysis, the original image, processed image, MSMI score, source risk and image quality metrics will appear here.
+                  After analysis, the original image, processed image, MSMI score,
+                  source risk, image quality metrics and hybrid validation will appear here.
                 </p>
               </div>
             ) : (
               <div>
                 <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                   <div>
-                    <h3 className="text-lg font-bold text-slate-950">Analysis Result</h3>
-                    <p className="mt-1 text-sm text-slate-500">Stored in database on {formatDate(result.created_at)}</p>
+                    <h3 className="text-lg font-bold text-slate-950">
+                      Analysis Result
+                    </h3>
+                    <p className="mt-1 text-sm text-slate-500">
+                      Stored in database on {formatDate(result.created_at)}
+                    </p>
                   </div>
 
-                  <span className={`inline-flex w-fit items-center gap-2 rounded-full border px-3 py-1 text-sm font-bold ${riskStyle.badge}`}>
+                  <span
+                    className={`inline-flex w-fit items-center gap-2 rounded-full border px-3 py-1 text-sm font-bold ${riskStyle.badge}`}
+                  >
                     <span className={`h-2.5 w-2.5 rounded-full ${riskStyle.dot}`} />
                     {result.monitoring_risk_level || "Unknown"}
                   </span>
                 </div>
 
+                <div className="mb-6 rounded-3xl border border-cyan-200 bg-cyan-50 p-5">
+                  <div className="flex items-start gap-3">
+                    <div className="rounded-2xl bg-white p-3 text-cyan-700 shadow-sm">
+                      <Cpu className="h-6 w-6" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold uppercase tracking-widest text-cyan-700">
+                        Detection Engine
+                      </p>
+                      <h4 className="mt-1 text-xl font-black text-slate-950">
+                        {detectorLabel}
+                      </h4>
+                      <p className="mt-2 text-sm leading-6 text-slate-600">
+                        YOLO26n is used as the main detector. YOLOv5 is retained
+                        as a baseline route for comparison.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <ImageCard title="Original Image" imageUrl={getMediaUrl(result.original_image_url)} />
-                  <ImageCard title="Processed Image" imageUrl={getMediaUrl(result.processed_image_url)} />
+                  <ImageCard
+                    title="Original Image"
+                    imageUrl={getMediaUrl(result.original_image_url)}
+                  />
+                  <ImageCard
+                    title="Processed Image"
+                    imageUrl={getMediaUrl(result.processed_image_url)}
+                  />
                 </div>
 
                 <div className="mt-6 rounded-3xl border border-cyan-200 bg-gradient-to-br from-cyan-50 to-teal-50 p-5">
                   <div className="mb-4 flex items-center justify-between gap-3">
                     <div>
-                      <p className="text-xs font-bold uppercase tracking-widest text-cyan-700">MicroSense Monitoring Index</p>
-                      <h4 className="mt-1 text-xl font-black text-slate-950">MSMI: {formatValue(result.msmi_score ?? result.mpi_score)}</h4>
+                      <p className="text-xs font-bold uppercase tracking-widest text-cyan-700">
+                        MicroSense Monitoring Index
+                      </p>
+                      <h4 className="mt-1 text-xl font-black text-slate-950">
+                        MSMI: {formatValue(result.msmi_score ?? result.mpi_score)}
+                      </h4>
                     </div>
                     <Gauge className="h-9 w-9 text-cyan-700" />
                   </div>
                   <p className="text-sm leading-6 text-slate-700">
-                    {result.risk_explanation || "MSMI combines particle concentration, particle count, particle area, confidence, image quality and source risk weighting."}
+                    {result.risk_explanation ||
+                      "MSMI combines particle concentration, particle count, particle area, confidence, image quality and source risk weighting."}
                   </p>
                 </div>
 
                 <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                  <MetricCard icon={<Gauge className="h-5 w-5" />} label="MSMI Score" value={result.msmi_score ?? result.mpi_score} highlight />
-                  <MetricCard icon={<Activity className="h-5 w-5" />} label="Detected Particles" value={result.detected_particles} />
-                  <MetricCard icon={<Droplets className="h-5 w-5" />} label="Particles / Litre" value={result.estimated_particles_per_litre} />
-                  <MetricCard icon={<BarChart3 className="h-5 w-5" />} label="MPI Score" value={result.mpi_score} />
-                  <MetricCard icon={<ShieldCheck className="h-5 w-5" />} label="Confidence" value={formatValue(result.confidence_score, "%")} />
-                  <MetricCard icon={<Waves className="h-5 w-5" />} label="Source Factor" value={result.source_risk_factor} />
+                  <MetricCard
+                    icon={<Gauge className="h-5 w-5" />}
+                    label="MSMI Score"
+                    value={result.msmi_score ?? result.mpi_score}
+                    highlight
+                  />
+                  <MetricCard
+                    icon={<Activity className="h-5 w-5" />}
+                    label="Detected Particles"
+                    value={result.detected_particles}
+                  />
+                  <MetricCard
+                    icon={<Droplets className="h-5 w-5" />}
+                    label="Particles / Litre"
+                    value={result.estimated_particles_per_litre}
+                  />
+                  <MetricCard
+                    icon={<BarChart3 className="h-5 w-5" />}
+                    label="MPI Score"
+                    value={result.mpi_score}
+                  />
+                  <MetricCard
+                    icon={<ShieldCheck className="h-5 w-5" />}
+                    label="Confidence"
+                    value={formatValue(result.confidence_score, "%")}
+                  />
+                  <MetricCard
+                    icon={<Waves className="h-5 w-5" />}
+                    label="Source Factor"
+                    value={result.source_risk_factor}
+                  />
+                </div>
+
+                <div className="mt-6 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+                  <div className="mb-4 flex items-center gap-2">
+                    <div className="rounded-xl bg-cyan-50 p-2 text-cyan-700">
+                      <ShieldCheck className="h-5 w-5" />
+                    </div>
+                    <p className="text-sm font-bold text-slate-950">
+                      Hybrid AI Validation
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                    <ValidationBox
+                      label="Raw Candidates"
+                      value={result.raw_detection_count}
+                      tone="slate"
+                    />
+                    <ValidationBox
+                      label="Accepted"
+                      value={result.accepted_detection_count}
+                      tone="emerald"
+                      icon={<CheckCircle className="h-4 w-4" />}
+                    />
+                    <ValidationBox
+                      label="Rejected"
+                      value={result.rejected_detection_count}
+                      tone="rose"
+                      icon={<XCircle className="h-4 w-4" />}
+                    />
+                    <ValidationBox
+                      label="Hybrid Score"
+                      value={result.hybrid_filter_score}
+                      tone="cyan"
+                    />
+                  </div>
+
+                  {result.filter_summary && (
+                    <div className="mt-4 rounded-2xl border border-cyan-100 bg-cyan-50 p-3 text-sm leading-6 text-cyan-900">
+                      {result.filter_summary}
+                    </div>
+                  )}
+
+                  <p className="mt-3 text-xs leading-5 text-slate-500">
+                    Hybrid validation checks whether detected objects are visually
+                    particle-like using contrast, edge boundary, compactness and area.
+                    It does not chemically confirm polymer composition.
+                  </p>
                 </div>
 
                 <div className="mt-6 grid gap-4 lg:grid-cols-2">
-                  <Panel title="Image Quality Validation" icon={<Microscope className="h-5 w-5" />}>
-                    <div className={`mb-4 rounded-2xl border px-4 py-3 text-sm font-bold ${getQualityStyle(result.image_quality_status)}`}>
-                      Status: {result.image_quality_status || "Unknown"} · Score: {formatValue(result.image_quality_score)}
+                  <Panel
+                    title="Image Quality Validation"
+                    icon={<Microscope className="h-5 w-5" />}
+                  >
+                    <div
+                      className={`mb-4 rounded-2xl border px-4 py-3 text-sm font-bold ${getQualityStyle(
+                        result.image_quality_status
+                      )}`}
+                    >
+                      Status: {result.image_quality_status || "Unknown"} · Score:{" "}
+                      {formatValue(result.image_quality_score)}
                     </div>
                     <div className="grid gap-3 sm:grid-cols-2">
                       <InfoRow label="Focus Score" value={formatValue(result.focus_score)} />
-                      <InfoRow label="Brightness Score" value={formatValue(result.brightness_score)} />
-                      <InfoRow label="Contrast Score" value={formatValue(result.contrast_score)} />
-                      <InfoRow label="Underexposed" value={formatValue(result.underexposed_percent, "%")} />
-                      <InfoRow label="Overexposed" value={formatValue(result.overexposed_percent, "%")} />
-                      <InfoRow label="Avg Brightness" value={formatValue(result.average_brightness)} />
+                      <InfoRow
+                        label="Brightness Score"
+                        value={formatValue(result.brightness_score)}
+                      />
+                      <InfoRow
+                        label="Contrast Score"
+                        value={formatValue(result.contrast_score)}
+                      />
+                      <InfoRow
+                        label="Underexposed"
+                        value={formatValue(result.underexposed_percent, "%")}
+                      />
+                      <InfoRow
+                        label="Overexposed"
+                        value={formatValue(result.overexposed_percent, "%")}
+                      />
+                      <InfoRow
+                        label="Avg Brightness"
+                        value={formatValue(result.average_brightness)}
+                      />
                     </div>
                     {result.quality_warning && (
                       <div className="mt-4 flex gap-2 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
@@ -465,41 +707,73 @@ export default function UploadPage() {
                     )}
                   </Panel>
 
-                  <Panel title="Source-Aware Risk" icon={<ShieldCheck className="h-5 w-5" />}>
+                  <Panel
+                    title="Source-Aware Risk"
+                    icon={<ShieldCheck className="h-5 w-5" />}
+                  >
                     <div className="grid gap-3">
                       <InfoRow label="Sample Source" value={result.sample_source} />
-                      <InfoRow label="Source Risk Factor" value={result.source_risk_factor} />
-                      <InfoRow label="Concentration-only Risk" value={result.concentration_only_risk_level} />
-                      <InfoRow label="Final MSMI Risk" value={result.monitoring_risk_level} />
-                      <InfoRow label="Concentration Score" value={result.concentration_score} />
+                      <InfoRow
+                        label="Source Risk Factor"
+                        value={result.source_risk_factor}
+                      />
+                      <InfoRow
+                        label="Concentration-only Risk"
+                        value={result.concentration_only_risk_level}
+                      />
+                      <InfoRow
+                        label="Final MSMI Risk"
+                        value={result.monitoring_risk_level}
+                      />
+                      <InfoRow
+                        label="Concentration Score"
+                        value={result.concentration_score}
+                      />
                       <InfoRow label="Size Score" value={result.size_score} />
                     </div>
                   </Panel>
                 </div>
 
                 <div className={`mt-6 rounded-3xl border p-5 ${riskStyle.card}`}>
-                  <p className="text-sm font-bold text-slate-900">Recommendation</p>
-                  <p className="mt-2 text-sm leading-6 text-slate-700">{result.recommendation || "No recommendation available."}</p>
+                  <p className="text-sm font-bold text-slate-900">
+                    Recommendation
+                  </p>
+                  <p className="mt-2 text-sm leading-6 text-slate-700">
+                    {result.recommendation || "No recommendation available."}
+                  </p>
                 </div>
 
                 <div className="mt-6 rounded-3xl border border-slate-200 bg-slate-50 p-5">
                   <div className="grid gap-4 text-sm sm:grid-cols-2">
                     <InfoRow label="Sample ID" value={result.id} />
-                    <InfoRow label="Chamber Volume" value={`${result.chamber_volume_ml} mL`} />
+                    <InfoRow
+                      label="Chamber Volume"
+                      value={`${result.chamber_volume_ml} mL`}
+                    />
                     <InfoRow label="Size Category" value={result.size_category} />
-                    <InfoRow label="Avg. Area" value={formatValue(result.average_particle_area, " px²")} />
+                    <InfoRow
+                      label="Avg. Area"
+                      value={formatValue(result.average_particle_area, " px²")}
+                    />
                     <InfoRow label="File Type" value={result.file_type} />
                     <InfoRow label="Notes" value={result.notes || "—"} />
                   </div>
                 </div>
 
                 <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-                  <Link to="/history" className="inline-flex flex-1 items-center justify-center gap-2 rounded-2xl bg-cyan-600 px-5 py-3 text-sm font-bold text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-cyan-700">
+                  <Link
+                    to="/history"
+                    className="inline-flex flex-1 items-center justify-center gap-2 rounded-2xl bg-cyan-600 px-5 py-3 text-sm font-bold text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-cyan-700"
+                  >
                     <Database className="h-5 w-5" />
                     View in History
                   </Link>
 
-                  <button type="button" onClick={resetForm} className="inline-flex flex-1 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-bold text-slate-700 shadow-sm transition hover:-translate-y-0.5 hover:border-cyan-200 hover:text-cyan-700">
+                  <button
+                    type="button"
+                    onClick={resetForm}
+                    className="inline-flex flex-1 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-bold text-slate-700 shadow-sm transition hover:-translate-y-0.5 hover:border-cyan-200 hover:text-cyan-700"
+                  >
                     <RotateCcw className="h-5 w-5" />
                     Analyze Another Sample
                   </button>
@@ -517,7 +791,9 @@ function FeaturePill({ icon, title, text }) {
   return (
     <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
       <div className="flex items-start gap-3">
-        <div className="rounded-xl bg-white p-2 text-cyan-700 shadow-sm">{icon}</div>
+        <div className="rounded-xl bg-white p-2 text-cyan-700 shadow-sm">
+          {icon}
+        </div>
         <div>
           <p className="font-semibold text-slate-900">{title}</p>
           <p className="mt-1 text-sm leading-5 text-slate-600">{text}</p>
@@ -541,12 +817,39 @@ function Panel({ title, icon, children }) {
 
 function MetricCard({ icon, label, value, highlight = false }) {
   return (
-    <div className={`rounded-3xl border p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${highlight ? "border-cyan-200 bg-cyan-50" : "border-slate-200 bg-white"}`}>
+    <div
+      className={`rounded-3xl border p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${
+        highlight ? "border-cyan-200 bg-cyan-50" : "border-slate-200 bg-white"
+      }`}
+    >
       <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-2xl bg-white text-cyan-700 shadow-sm">
         {icon}
       </div>
-      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</p>
+      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+        {label}
+      </p>
       <p className="mt-1 text-2xl font-bold text-slate-950">{value ?? "—"}</p>
+    </div>
+  );
+}
+
+function ValidationBox({ label, value, tone = "slate", icon = null }) {
+  const styles = {
+    slate: "bg-slate-50 border-slate-200 text-slate-900",
+    emerald: "bg-emerald-50 border-emerald-200 text-emerald-700",
+    rose: "bg-rose-50 border-rose-200 text-rose-700",
+    cyan: "bg-cyan-50 border-cyan-200 text-cyan-700",
+  };
+
+  return (
+    <div className={`rounded-2xl border p-3 ${styles[tone] || styles.slate}`}>
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-xs font-semibold uppercase tracking-wide opacity-70">
+          {label}
+        </p>
+        {icon}
+      </div>
+      <p className="mt-2 text-2xl font-black">{value ?? "—"}</p>
     </div>
   );
 }
@@ -560,7 +863,11 @@ function ImageCard({ title, imageUrl }) {
 
       <div className="flex min-h-56 items-center justify-center p-3">
         {imageUrl ? (
-          <img src={imageUrl} alt={title} className="max-h-72 rounded-2xl object-contain" />
+          <img
+            src={imageUrl}
+            alt={title}
+            className="max-h-72 rounded-2xl object-contain"
+          />
         ) : (
           <p className="text-sm text-slate-500">Image not available</p>
         )}
@@ -572,7 +879,9 @@ function ImageCard({ title, imageUrl }) {
 function InfoRow({ label, value }) {
   return (
     <div>
-      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</p>
+      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+        {label}
+      </p>
       <p className="mt-1 font-semibold text-slate-900">{value ?? "—"}</p>
     </div>
   );
