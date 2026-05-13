@@ -74,6 +74,12 @@ class SampleOut(BaseModel):
     image_quality_status: Optional[str] = None
     quality_warning: Optional[str] = None
 
+    raw_detection_count: Optional[int] = None
+    accepted_detection_count: Optional[int] = None
+    rejected_detection_count: Optional[int] = None
+    hybrid_filter_score: Optional[float] = None
+    filter_summary: Optional[str] = None
+
     original_image_url: Optional[str] = None
     processed_image_url: Optional[str] = None
     file_type: str

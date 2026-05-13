@@ -52,6 +52,12 @@ class Sample(Base):
     image_quality_status = Column(String(30), nullable=True)
     quality_warning = Column(Text, nullable=True)
 
+    raw_detection_count = Column(Integer, nullable=True)
+    accepted_detection_count = Column(Integer, nullable=True)
+    rejected_detection_count = Column(Integer, nullable=True)
+    hybrid_filter_score = Column(Float, nullable=True)
+    filter_summary = Column(Text, nullable=True)
+
     # File references
     original_file_path = Column(String(300), nullable=True)
     processed_file_path = Column(String(300), nullable=True)

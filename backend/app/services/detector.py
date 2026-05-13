@@ -8,6 +8,7 @@ Permanent fix:
 - Always generate processed image.
 - Always return DetectionResult to samples.py.
 - Always calculate image quality, even when OpenCV fallback is used.
+- Apply Hybrid AI + Image Processing Filter to reduce false positives.
 """
 
 from __future__ import annotations
@@ -31,6 +32,7 @@ from app.config import (
 )
 from app.utils.helpers import generate_unique_filename
 from app.services.quality import evaluate_image_quality
+from app.services.hybrid_filter import validate_particle
 
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
@@ -57,6 +59,7 @@ class DetectionResult:
     particles: List[Particle] = field(default_factory=list)
     processed_image_path: str = ""
 
+    # Basic image statistics
     laplacian_variance: float = 0.0
     mean_brightness: float = 0.0
     average_particle_area: float = 0.0
@@ -72,8 +75,21 @@ class DetectionResult:
     image_quality_status: str = "Unknown"
     quality_warning: str = ""
 
+    # Hybrid filter fields
+    raw_detection_count: int = 0
+    accepted_detection_count: int = 0
+    rejected_detection_count: int = 0
+    hybrid_filter_score: float = 0.0
+    filter_summary: str = ""
+
     @property
     def count(self) -> int:
+        """
+        Final trusted particle count.
+
+        This returns the number of accepted particles after hybrid validation.
+        samples.py uses result.count for detected_particles and MSMI calculation.
+        """
         return len(self.particles)
 
 
@@ -152,6 +168,62 @@ def _safe_crop(gray: np.ndarray, x1: int, y1: int, x2: int, y2: int) -> np.ndarr
     return gray[y1:y2, x1:x2]
 
 
+def _build_filter_summary(
+    raw_count: int,
+    accepted_count: int,
+    rejected_count: int,
+    rejection_reasons: list[str],
+) -> str:
+    """
+    Build human-readable explanation for hybrid filter output.
+    """
+
+    if raw_count == 0:
+        return "No particle candidates were detected."
+
+    if rejected_count == 0:
+        return (
+            f"All {accepted_count} detected particle candidates passed "
+            f"the hybrid validation filter."
+        )
+
+    reason_counts: dict[str, int] = {}
+
+    for reason in rejection_reasons:
+        if not reason:
+            continue
+
+        parts = [r.strip() for r in reason.split(",") if r.strip()]
+
+        for part in parts:
+            reason_counts[part] = reason_counts.get(part, 0) + 1
+
+    if reason_counts:
+        top_reasons = sorted(
+            reason_counts.items(),
+            key=lambda item: item[1],
+            reverse=True,
+        )
+
+        reason_text = ", ".join(
+            [f"{reason} ({count})" for reason, count in top_reasons[:3]]
+        )
+
+        return (
+            f"{rejected_count} of {raw_count} particle candidates were rejected. "
+            f"Main rejection reasons: {reason_text}."
+        )
+
+    return (
+        f"{rejected_count} of {raw_count} particle candidates were rejected "
+        f"by the hybrid validation filter."
+    )
+
+
+def _mean_or_zero(values: list[float]) -> float:
+    return float(np.mean(values)) if values else 0.0
+
+
 # ── OpenCV fallback detector ──────────────────────────────────────────────────
 
 def _classical_cv_detection(
@@ -166,13 +238,11 @@ def _classical_cv_detection(
     OpenCV fallback detector.
 
     This prevents Render from returning 500 if YOLOv5/torch.hub fails.
-    It also calculates image quality so the response does not return
-    image_quality_score = 0 and image_quality_status = Unknown.
+    It also calculates image quality and applies hybrid validation.
     """
 
     print(f"WARNING: Falling back to OpenCV detector. Reason: {reason}")
 
-    # Image quality validation for OpenCV fallback path
     quality = evaluate_image_quality(gray)
 
     clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
@@ -211,6 +281,11 @@ def _classical_cv_detection(
     particles: List[Particle] = []
     output_img = img_resized.copy()
 
+    raw_detection_count = 0
+    rejected_detection_count = 0
+    validation_scores: list[float] = []
+    rejection_reasons: list[str] = []
+
     for cnt in contours:
         area = float(cv2.contourArea(cnt))
 
@@ -220,6 +295,44 @@ def _classical_cv_detection(
         x, y, w, h = cv2.boundingRect(cnt)
 
         if w <= 1 or h <= 1:
+            continue
+
+        raw_detection_count += 1
+
+        validation = validate_particle(
+            gray=gray,
+            x=int(x),
+            y=int(y),
+            width=int(w),
+            height=int(h),
+            area=area,
+        )
+
+        validation_scores.append(validation.validation_score)
+
+        if not validation.is_valid:
+            rejected_detection_count += 1
+            rejection_reasons.append(validation.rejection_reason)
+
+            # Rejected candidates are shown in red.
+            cv2.rectangle(
+                output_img,
+                (x, y),
+                (x + w, y + h),
+                (0, 0, 255),
+                1,
+            )
+
+            cv2.putText(
+                output_img,
+                "Rejected",
+                (x, max(20, y - 8)),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.45,
+                (0, 0, 255),
+                1,
+            )
+
             continue
 
         roi = _safe_crop(gray, x, y, x + w, y + h)
@@ -237,6 +350,7 @@ def _classical_cv_detection(
 
         particles.append(particle)
 
+        # Accepted candidates are shown in yellow.
         cv2.rectangle(
             output_img,
             (x, y),
@@ -245,9 +359,34 @@ def _classical_cv_detection(
             2,
         )
 
+        cv2.putText(
+            output_img,
+            f"Accepted {validation.validation_score:.0f}",
+            (x, max(20, y - 8)),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.45,
+            (0, 255, 255),
+            1,
+        )
+
+    accepted_detection_count = len(particles)
+
+    hybrid_filter_score = (
+        round(float(np.mean(validation_scores)), 2)
+        if validation_scores
+        else 0.0
+    )
+
+    filter_summary = _build_filter_summary(
+        raw_count=raw_detection_count,
+        accepted_count=accepted_detection_count,
+        rejected_count=rejected_detection_count,
+        rejection_reasons=rejection_reasons,
+    )
+
     cv2.putText(
         output_img,
-        f"CV Particles: {len(particles)}",
+        f"CV Accepted: {accepted_detection_count}/{raw_detection_count}",
         (10, 25),
         cv2.FONT_HERSHEY_SIMPLEX,
         0.7,
@@ -259,6 +398,16 @@ def _classical_cv_detection(
         output_img,
         f"Quality: {quality.image_quality_status} ({quality.image_quality_score})",
         (10, 55),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.6,
+        (0, 255, 0),
+        2,
+    )
+
+    cv2.putText(
+        output_img,
+        f"Hybrid: {hybrid_filter_score}",
+        (10, 85),
         cv2.FONT_HERSHEY_SIMPLEX,
         0.6,
         (0, 255, 0),
@@ -277,8 +426,8 @@ def _classical_cv_detection(
     if not saved:
         raise ValueError(f"Failed to save processed fallback image at: {proc_path}")
 
-    avg_area = float(np.mean([p.area for p in particles])) if particles else 0.0
-    avg_brightness = float(np.mean([p.brightness for p in particles])) if particles else 0.0
+    avg_area = _mean_or_zero([p.area for p in particles])
+    avg_brightness = _mean_or_zero([p.brightness for p in particles])
 
     return DetectionResult(
         particles=particles,
@@ -296,6 +445,12 @@ def _classical_cv_detection(
         image_quality_score=quality.image_quality_score,
         image_quality_status=quality.image_quality_status,
         quality_warning=quality.quality_warning,
+
+        raw_detection_count=raw_detection_count,
+        accepted_detection_count=accepted_detection_count,
+        rejected_detection_count=rejected_detection_count,
+        hybrid_filter_score=hybrid_filter_score,
+        filter_summary=filter_summary,
     )
 
 
@@ -311,11 +466,12 @@ def analyze_image(image_path: str) -> DetectionResult:
     3. Calculate image quality.
     4. Try YOLOv5 detection.
     5. If YOLO fails, use OpenCV fallback.
-    6. Save processed image.
-    7. Return DetectionResult.
+    6. Apply hybrid validation filter.
+    7. Save processed image.
+    8. Return DetectionResult.
     """
 
-    print("USING DETECTOR: YOLOv5 WITH OPENCV FALLBACK")
+    print("USING DETECTOR: YOLOv5 WITH OPENCV FALLBACK + HYBRID FILTER")
 
     img = cv2.imread(str(image_path))
 
@@ -350,6 +506,11 @@ def analyze_image(image_path: str) -> DetectionResult:
     particles: List[Particle] = []
     output_img = img_resized.copy()
 
+    raw_detection_count = 0
+    rejected_detection_count = 0
+    validation_scores: list[float] = []
+    rejection_reasons: list[str] = []
+
     for det in detections:
         x1, y1, x2, y2, conf, cls = det
 
@@ -363,6 +524,44 @@ def analyze_image(image_path: str) -> DetectionResult:
         area = float(width * height)
 
         if width <= 0 or height <= 0:
+            continue
+
+        raw_detection_count += 1
+
+        validation = validate_particle(
+            gray=gray,
+            x=x1,
+            y=y1,
+            width=width,
+            height=height,
+            area=area,
+        )
+
+        validation_scores.append(validation.validation_score)
+
+        if not validation.is_valid:
+            rejected_detection_count += 1
+            rejection_reasons.append(validation.rejection_reason)
+
+            # Rejected candidates are shown in red.
+            cv2.rectangle(
+                output_img,
+                (x1, y1),
+                (x2, y2),
+                (0, 0, 255),
+                1,
+            )
+
+            cv2.putText(
+                output_img,
+                "Rejected",
+                (x1, max(20, y1 - 8)),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.45,
+                (0, 0, 255),
+                1,
+            )
+
             continue
 
         roi = _safe_crop(gray, x1, y1, x2, y2)
@@ -380,6 +579,7 @@ def analyze_image(image_path: str) -> DetectionResult:
 
         particles.append(particle)
 
+        # Accepted candidates are shown in yellow.
         cv2.rectangle(
             output_img,
             (x1, y1),
@@ -388,21 +588,36 @@ def analyze_image(image_path: str) -> DetectionResult:
             2,
         )
 
-        label = f"Particle {conf:.2f}"
+        label = f"Accepted {conf:.2f} | H:{validation.validation_score:.0f}"
 
         cv2.putText(
             output_img,
             label,
             (x1, max(20, y1 - 8)),
             cv2.FONT_HERSHEY_SIMPLEX,
-            0.5,
+            0.45,
             (0, 255, 255),
-            2,
+            1,
         )
+
+    accepted_detection_count = len(particles)
+
+    hybrid_filter_score = (
+        round(float(np.mean(validation_scores)), 2)
+        if validation_scores
+        else 0.0
+    )
+
+    filter_summary = _build_filter_summary(
+        raw_count=raw_detection_count,
+        accepted_count=accepted_detection_count,
+        rejected_count=rejected_detection_count,
+        rejection_reasons=rejection_reasons,
+    )
 
     cv2.putText(
         output_img,
-        f"YOLO Particles: {len(particles)}",
+        f"YOLO Accepted: {accepted_detection_count}/{raw_detection_count}",
         (10, 25),
         cv2.FONT_HERSHEY_SIMPLEX,
         0.7,
@@ -414,6 +629,16 @@ def analyze_image(image_path: str) -> DetectionResult:
         output_img,
         f"Quality: {quality.image_quality_status} ({quality.image_quality_score})",
         (10, 55),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.6,
+        (0, 255, 0),
+        2,
+    )
+
+    cv2.putText(
+        output_img,
+        f"Hybrid: {hybrid_filter_score}",
+        (10, 85),
         cv2.FONT_HERSHEY_SIMPLEX,
         0.6,
         (0, 255, 0),
@@ -433,9 +658,14 @@ def analyze_image(image_path: str) -> DetectionResult:
         raise ValueError(f"Failed to save processed image at: {proc_path}")
 
     print("DETECTOR.PY FINAL processed_path:", proc_path)
+    print("Raw detection count:", raw_detection_count)
+    print("Accepted detection count:", accepted_detection_count)
+    print("Rejected detection count:", rejected_detection_count)
+    print("Hybrid filter score:", hybrid_filter_score)
+    print("Filter summary:", filter_summary)
 
-    avg_area = float(np.mean([p.area for p in particles])) if particles else 0.0
-    avg_brightness = float(np.mean([p.brightness for p in particles])) if particles else 0.0
+    avg_area = _mean_or_zero([p.area for p in particles])
+    avg_brightness = _mean_or_zero([p.brightness for p in particles])
 
     return DetectionResult(
         particles=particles,
@@ -453,6 +683,12 @@ def analyze_image(image_path: str) -> DetectionResult:
         image_quality_score=quality.image_quality_score,
         image_quality_status=quality.image_quality_status,
         quality_warning=quality.quality_warning,
+
+        raw_detection_count=raw_detection_count,
+        accepted_detection_count=accepted_detection_count,
+        rejected_detection_count=rejected_detection_count,
+        hybrid_filter_score=hybrid_filter_score,
+        filter_summary=filter_summary,
     )
 
 
