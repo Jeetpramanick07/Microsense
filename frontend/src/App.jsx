@@ -65,7 +65,7 @@ function AppInner() {
         </Routes>
       </main>
       <footer className="mb-24 border-t border-cyan-100 bg-white/70 px-4 py-6 text-center backdrop-blur-xl md:mb-0 sm:px-6">
-        <p className="mx-auto max-w-sm text-xs leading-6 text-slate-500 sm:max-w-none">MicroSense AI-Cam · Prototype AI microplastic monitoring system · <span className="font-mono text-cyan-700">FastAPI + YOLO26n + Hybrid Validation + React</span></p>
+        <p className="mx-auto max-w-sm text-xs leading-6 text-slate-500 sm:max-w-none"> &copy; 2026, All rights reserved . <span className="font-mono text-cyan-700"> |  MICROSENSE AI - CAM</span></p>
       </footer>
     </div>
   );
