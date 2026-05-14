@@ -22,10 +22,13 @@ async function safeFetch(url, options = {}) {
 export async function checkBackendConnection() {
   try {
     const response = await fetch(`${API_BASE_URL}/api/health`, {
-      signal: AbortSignal.timeout(5000),
+      method: "GET",
+      cache: "no-store",
     });
+
     return response.ok;
-  } catch {
+  } catch (error) {
+    console.error("Backend health check failed:", error);
     return false;
   }
 }

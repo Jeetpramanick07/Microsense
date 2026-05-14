@@ -5,11 +5,19 @@ const statusConfig = {
   ready: { color: "teal", label: "Ready", dot: "bg-teal-500" },
   active: { color: "teal", label: "Active", dot: "bg-teal-500" },
   available: { color: "teal", label: "Available", dot: "bg-teal-500" },
+
+  // Use these while YOLO26n analysis is running
+  busy: { color: "amber", label: "Busy", dot: "bg-amber-500" },
+  processing: { color: "amber", label: "Processing", dot: "bg-amber-500" },
+  analyzing: { color: "amber", label: "Analyzing", dot: "bg-amber-500" },
+
   checking: { color: "amber", label: "Checking...", dot: "bg-amber-400" },
   waiting: { color: "blue", label: "Waiting", dot: "bg-blue-400" },
   pending: { color: "slate", label: "Pending", dot: "bg-slate-400" },
+
   offline: { color: "red", label: "Offline", dot: "bg-red-500" },
   error: { color: "red", label: "Error", dot: "bg-red-500" },
+
   optional: { color: "slate", label: "Optional", dot: "bg-slate-300" },
   unknown: { color: "slate", label: "Unknown", dot: "bg-slate-300" },
 };
@@ -52,27 +60,60 @@ const colorMap = {
   },
 };
 
-export default function StatusCard({ icon: Icon, title, description, status, detail, delay = 0 }) {
+export default function StatusCard({
+  icon: Icon,
+  title,
+  description,
+  status = "unknown",
+  detail,
+  delay = 0,
+}) {
   const cfg = statusConfig[status] || statusConfig.unknown;
-  const colors = colorMap[cfg.color];
+  const colors = colorMap[cfg.color] || colorMap.slate;
+
+  const isLive =
+    status === "connected" ||
+    status === "ready" ||
+    status === "active" ||
+    status === "available";
+
+  const isBusy =
+    status === "busy" ||
+    status === "processing" ||
+    status === "analyzing" ||
+    status === "checking";
 
   return (
     <div
-      className={`glass-card lift-card rounded-3xl p-4 flex flex-col gap-3 animate-slide-up border ${colors.border}`}
+      className={`glass-card lift-card rounded-3xl border ${colors.border} p-4 flex flex-col gap-3 animate-slide-up`}
       style={{ animationDelay: `${delay * 55}ms` }}
     >
       <div className="flex items-start justify-between gap-2">
-        <div className={`w-10 h-10 rounded-2xl flex items-center justify-center flex-shrink-0 ${colors.icon}`}>
-          <Icon size={18} />
+        <div
+          className={`w-10 h-10 rounded-2xl flex items-center justify-center flex-shrink-0 ${colors.icon}`}
+        >
+          {Icon ? <Icon size={18} /> : null}
         </div>
-        <span className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${colors.badge}`}>
-          <span className={`status-dot ${cfg.dot} ${status === "checking" ? "animate-pulse" : ""} ${status === "connected" || status === "ready" || status === "active" ? "pulse-ring" : ""}`} />
+
+        <span
+          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${colors.badge}`}
+        >
+          <span
+            className={`status-dot ${cfg.dot} ${
+              isBusy ? "animate-pulse" : ""
+            } ${isLive ? "pulse-ring" : ""}`}
+          />
           {cfg.label}
         </span>
       </div>
+
       <div>
         <div className="font-black text-slate-900 text-sm">{title}</div>
-        <div className="text-slate-500 text-xs mt-0.5 leading-relaxed">{description}</div>
+
+        <div className="text-slate-500 text-xs mt-0.5 leading-relaxed">
+          {description}
+        </div>
+
         {detail && (
           <div className="mt-1.5 font-mono text-[10px] text-slate-400 bg-slate-50 px-2 py-1 rounded border border-slate-100 truncate">
             {detail}
