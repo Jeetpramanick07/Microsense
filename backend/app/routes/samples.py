@@ -1,17 +1,19 @@
 """
-Sample routes: upload & analyze, list, detail, delete, report.
+Sample routes: upload & analyze, list, latest, detail, delete, PDF report.
 """
 
 from typing import Optional
+import traceback
 
 from fastapi import APIRouter, Depends, File, Form, UploadFile, HTTPException
-from fastapi.responses import JSONResponse, FileResponse
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app import models
 from app.schemas import SampleOut, SampleDetail
-from app.services import file_service, detector, detector_yolo26, calculator, report_service
+from app.services import file_service, detector, detector_yolo26, calculator
+from app.services.report_service import generate_sample_report
 from app.utils.helpers import path_to_url
 from app.config import VIDEO_FRAME_INTERVAL
 
@@ -63,20 +65,17 @@ async def analyze_image(
     7. Return API response.
 
     Important:
-    This is the existing stable YOLOv5 route.
+    This is the existing stable YOLOv5 baseline route.
     """
 
-    # 1. Save original uploaded image
     original_path = await file_service.save_image(file)
 
-    # 2. YOLOv5 / OpenCV fallback detection
     try:
         result = detector.analyze_image(str(original_path))
 
         print("\n========== MICROSENSE IMAGE DEBUG ==========")
         print("Detector version: YOLOv5 stable route")
         print("Original image path:", str(original_path))
-        print("Detector result object:", result)
         print("Detector processed image path:", result.processed_image_path)
         print("Detector count:", result.count)
         print("Average particle area:", result.average_particle_area)
@@ -101,7 +100,6 @@ async def analyze_image(
             detail=f"Image analysis failed: {str(e)}",
         )
 
-    # 3. Calculate MSMI / MPI / risk values
     calc = calculator.calculate_results(
         detected_particles=result.count,
         chamber_volume_ml=chamber_volume_ml,
@@ -112,7 +110,6 @@ async def analyze_image(
         image_quality_score=getattr(result, "image_quality_score", None),
     )
 
-    # 4. Save sample result to database
     sample = models.Sample(
         sample_source=sample_source,
         chamber_volume_ml=chamber_volume_ml,
@@ -136,7 +133,6 @@ async def analyze_image(
         average_brightness=result.average_brightness,
         size_category=calc["size_category"],
 
-        # Image quality validation fields
         focus_score=getattr(result, "focus_score", None),
         brightness_score=getattr(result, "brightness_score", None),
         contrast_score=getattr(result, "contrast_score", None),
@@ -146,7 +142,6 @@ async def analyze_image(
         image_quality_status=getattr(result, "image_quality_status", None),
         quality_warning=getattr(result, "quality_warning", None),
 
-        # Phase 1B hybrid filter fields
         raw_detection_count=getattr(result, "raw_detection_count", None),
         accepted_detection_count=getattr(result, "accepted_detection_count", None),
         rejected_detection_count=getattr(result, "rejected_detection_count", None),
@@ -165,9 +160,8 @@ async def analyze_image(
     )
 
     db.add(sample)
-    db.flush()  # Required to get sample.id before adding particle features
+    db.flush()
 
-    # 5. Save individual accepted particle features
     for p in result.particles:
         db.add(
             models.ParticleFeature(
@@ -200,7 +194,7 @@ async def analyze_image(
     return response
 
 
-# ── Analyze Image: YOLO26n Experimental Route ─────────────────────────────────
+# ── Analyze Image: YOLO26n Main Route ─────────────────────────────────────────
 
 @router.post("/analyze-image-yolo26", response_model=SampleOut, status_code=201)
 async def analyze_image_yolo26(
@@ -217,32 +211,20 @@ async def analyze_image_yolo26(
     This route uses the main YOLO26n detector.
     YOLOv5 is retained only as a baseline comparison route.
 
-    Flow:
-    1. Save uploaded original image.
-    2. Run YOLO26n detector.
-    3. Apply image quality validation.
-    4. Apply hybrid AI + image-processing filter.
-    5. Calculate MSMI / MPI.
-    6. Save result and particle features to database.
-    7. Return API response.
-
     Scientific limitation:
     This detects microplastic-like particle candidates only.
     It does not perform certified microplastic detection,
     polymer identification, or regulatory-grade quantification.
     """
 
-    # 1. Save original uploaded image
     original_path = await file_service.save_image(file)
 
-    # 2. YOLO26n detection + hybrid validation
     try:
         result = detector_yolo26.analyze_image_yolo26(str(original_path))
 
         print("\n========== MICROSENSE YOLO26 IMAGE DEBUG ==========")
         print("Detector version: YOLO26n main route")
         print("Original image path:", str(original_path))
-        print("Detector result object:", result)
         print("Detector processed image path:", result.processed_image_path)
         print("Detector count:", result.count)
         print("Average particle area:", result.average_particle_area)
@@ -271,7 +253,6 @@ async def analyze_image_yolo26(
             detail=f"YOLO26 image analysis failed: {str(e)}",
         )
 
-    # 3. Calculate MSMI / MPI / risk values
     calc = calculator.calculate_results(
         detected_particles=result.count,
         chamber_volume_ml=chamber_volume_ml,
@@ -282,7 +263,6 @@ async def analyze_image_yolo26(
         image_quality_score=getattr(result, "image_quality_score", None),
     )
 
-    # 4. Save sample result to database
     sample = models.Sample(
         sample_source=sample_source,
         chamber_volume_ml=chamber_volume_ml,
@@ -306,7 +286,6 @@ async def analyze_image_yolo26(
         average_brightness=result.average_brightness,
         size_category=calc["size_category"],
 
-        # Image quality validation fields
         focus_score=getattr(result, "focus_score", None),
         brightness_score=getattr(result, "brightness_score", None),
         contrast_score=getattr(result, "contrast_score", None),
@@ -316,7 +295,6 @@ async def analyze_image_yolo26(
         image_quality_status=getattr(result, "image_quality_status", None),
         quality_warning=getattr(result, "quality_warning", None),
 
-        # Hybrid filter fields
         raw_detection_count=getattr(result, "raw_detection_count", None),
         accepted_detection_count=getattr(result, "accepted_detection_count", None),
         rejected_detection_count=getattr(result, "rejected_detection_count", None),
@@ -335,9 +313,8 @@ async def analyze_image_yolo26(
     )
 
     db.add(sample)
-    db.flush()  # Required to get sample.id before adding particle features
+    db.flush()
 
-    # 5. Save individual accepted particle features
     for p in result.particles:
         db.add(
             models.ParticleFeature(
@@ -358,7 +335,7 @@ async def analyze_image_yolo26(
     response = _build_sample_out(sample)
 
     print("\n========== MICROSENSE YOLO26 RESPONSE DEBUG ==========")
-    print("Detector version: YOLO26n experimental route")
+    print("Detector version: YOLO26n main route")
     print("DB processed_file_path:", sample.processed_file_path)
     print("API processed_image_url:", response.get("processed_image_url"))
     print("Raw detection count:", response.get("raw_detection_count"))
@@ -385,17 +362,10 @@ async def analyze_video(
     Upload a video of the flow chamber.
 
     Every Nth frame is analysed for particles and results are averaged.
-
-    Note:
-    Phase 1B hybrid validation is currently applied to image upload.
-    For video, hybrid fields are stored as None until video-level
-    validation/tracking is added.
     """
 
-    # 1. Save video
     video_path = await file_service.save_video(file)
 
-    # 2. Frame-by-frame detection
     try:
         vresult = detector.analyze_video(
             str(video_path),
@@ -420,7 +390,6 @@ async def analyze_video(
             detail=f"Video analysis failed: {str(e)}",
         )
 
-    # 3. MSMI / MPI calculation using average particle count across frames
     calc = calculator.calculate_results(
         detected_particles=vresult["detected_particles"],
         chamber_volume_ml=chamber_volume_ml,
@@ -431,7 +400,6 @@ async def analyze_video(
         image_quality_score=None,
     )
 
-    # 4. Save video sample result
     sample = models.Sample(
         sample_source=sample_source,
         chamber_volume_ml=chamber_volume_ml,
@@ -455,7 +423,6 @@ async def analyze_video(
         average_brightness=vresult["average_brightness"],
         size_category=calc["size_category"],
 
-        # Image quality fields are None for video for now
         focus_score=None,
         brightness_score=None,
         contrast_score=None,
@@ -465,7 +432,6 @@ async def analyze_video(
         image_quality_status=None,
         quality_warning=None,
 
-        # Phase 1B hybrid filter fields are None for video for now
         raw_detection_count=None,
         accepted_detection_count=None,
         rejected_detection_count=None,
@@ -535,7 +501,6 @@ def get_latest_sample(db: Session = Depends(get_db)):
     Return the latest analyzed sample.
 
     If database is empty, return null instead of 404.
-    This prevents frontend console errors before first analysis.
     """
 
     sample = db.query(models.Sample).order_by(models.Sample.created_at.desc()).first()
@@ -544,6 +509,40 @@ def get_latest_sample(db: Session = Depends(get_db)):
         return None
 
     return _build_sample_out(sample)
+
+
+# ── PDF Report ────────────────────────────────────────────────────────────────
+
+@router.get("/{sample_id}/report")
+def download_sample_report(sample_id: int, db: Session = Depends(get_db)):
+    """
+    Generate and download a PDF report for a sample.
+    """
+
+    sample = db.query(models.Sample).filter(models.Sample.id == sample_id).first()
+
+    if not sample:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Sample {sample_id} not found",
+        )
+
+    try:
+        report_path = generate_sample_report(sample)
+
+        return FileResponse(
+            path=str(report_path),
+            media_type="application/pdf",
+            filename=f"microsense_sample_{sample.id}_report.pdf",
+        )
+
+    except Exception as error:
+        traceback.print_exc()
+
+        raise HTTPException(
+            status_code=500,
+            detail=f"Report generation failed: {str(error)}",
+        )
 
 
 # ── Single Sample ─────────────────────────────────────────────────────────────
@@ -595,47 +594,3 @@ def delete_sample(sample_id: int, db: Session = Depends(get_db)):
     db.commit()
 
     return {"detail": f"Sample {sample_id} deleted successfully"}
-
-
-# ── Report ────────────────────────────────────────────────────────────────────
-
-@router.get("/{sample_id}/report")
-def get_report(
-    sample_id: int,
-    format: str = "json",
-    db: Session = Depends(get_db),
-):
-    """
-    Generate a report for a sample.
-
-    Query:
-    - ?format=json returns structured JSON
-    - ?format=text saves a .txt file and returns it as a download
-    """
-
-    sample = db.query(models.Sample).filter(models.Sample.id == sample_id).first()
-
-    if not sample:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Sample {sample_id} not found",
-        )
-
-    format = format.lower().strip()
-
-    if format not in {"json", "text"}:
-        raise HTTPException(
-            status_code=400,
-            detail="format must be either 'json' or 'text'",
-        )
-
-    if format == "text":
-        path = report_service.generate_text_report(sample)
-
-        return FileResponse(
-            path=str(path),
-            media_type="text/plain",
-            filename=path.name,
-        )
-
-    return JSONResponse(content=report_service.generate_json_report(sample))

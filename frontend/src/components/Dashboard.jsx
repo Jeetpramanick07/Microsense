@@ -31,6 +31,7 @@ import {
   getLatestSample,
   getSamples,
 } from "../api.js";
+import DownloadReportButton from "./DownloadReportButton.jsx";
 
 const pipeline = [
   {
@@ -410,6 +411,15 @@ export default function Dashboard({
                   <p className="mt-3 rounded-2xl bg-amber-50 p-3 text-xs leading-5 text-amber-800">
                     {latestSample.quality_warning}
                   </p>
+                )}
+                {latestSample?.id && (
+                  <div className="mt-4">
+                    <DownloadReportButton
+                      sampleId={latestSample.id}
+                      label="Download Latest Report"
+                      className="w-full"
+                    />
+                  </div>
                 )}
               </div>
             </div>

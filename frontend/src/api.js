@@ -273,3 +273,38 @@ export function getRiskTone(riskLevel) {
 
   return "unknown";
 }
+
+export async function downloadSampleReport(sampleId) {
+  if (!sampleId) {
+    throw new Error("Sample ID is required to download report");
+  }
+
+  const response = await fetch(`${API_BASE_URL}/api/samples/${sampleId}/report`, {
+    method: "GET",
+    cache: "no-store",
+    headers: {
+      accept: "application/pdf",
+    },
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => "");
+    console.error("Report download failed:", response.status, errorText);
+    throw new Error("Failed to generate PDF report");
+  }
+
+  const blob = await response.blob();
+  const url = window.URL.createObjectURL(blob);
+
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `microsense_sample_${sampleId}_report.pdf`;
+
+  document.body.appendChild(link);
+  link.click();
+
+  link.remove();
+  window.URL.revokeObjectURL(url);
+
+  return true;
+}
