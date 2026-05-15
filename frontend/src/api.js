@@ -20,7 +20,9 @@ export function getMediaUrl(path) {
     return path;
   }
 
-  return `${API_BASE_URL}${path}`;
+  const cleanPath = path.startsWith("/") ? path : `/${path}`;
+
+  return `${API_BASE_URL}${cleanPath}`;
 }
 
 export async function checkBackendConnection() {
