@@ -1,108 +1,142 @@
-import React from "react";
-import { Link, useLocation } from "react-router-dom";
-import { Microscope, LayoutDashboard, Upload, History, Wifi, WifiOff, RefreshCw, Sparkles } from "lucide-react";
+import { NavLink } from "react-router-dom";
+import {
+  LayoutDashboard,
+  UploadCloud,
+  History,
+  Microscope,
+  Wifi,
+  WifiOff,
+  Loader2,
+} from "lucide-react";
 
-export default function Navbar({ backendConnected, checking, onRefresh }) {
-  const location = useLocation();
-  const navLinks = [
-    { to: "/", label: "Dashboard", icon: LayoutDashboard },
-    { to: "/upload", label: "Analyze", icon: Upload },
-    { to: "/history", label: "History", icon: History },
-  ];
+const navItems = [
+  {
+    label: "Dashboard",
+    path: "/",
+    icon: LayoutDashboard,
+  },
+  {
+    label: "Analyze",
+    path: "/upload",
+    icon: UploadCloud,
+  },
+  {
+    label: "History",
+    path: "/history",
+    icon: History,
+  },
+];
+
+export default function Navbar({
+  backendOnline = false,
+  backendChecking = false,
+  isAnalyzing = false,
+}) {
+  const statusLabel = isAnalyzing
+    ? "Busy"
+    : backendChecking
+    ? "Checking"
+    : backendOnline
+    ? "Online"
+    : "Offline";
+
+  const statusClass = isAnalyzing
+    ? "border-amber-200 bg-amber-50 text-amber-700"
+    : backendChecking
+    ? "border-blue-200 bg-blue-50 text-blue-700"
+    : backendOnline
+    ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+    : "border-rose-200 bg-rose-50 text-rose-700";
+
+  const StatusIcon = isAnalyzing ? Loader2 : backendOnline ? Wifi : WifiOff;
 
   return (
-    <header className="sticky top-0 z-50 border-b border-cyan-100/70 bg-white/72 backdrop-blur-2xl shadow-sm">
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <div className="flex min-h-[64px] items-center justify-between py-2.5 sm:min-h-[72px] sm:py-3">
-          <Link to="/" className="group flex items-center gap-3">
-            <div className="relative flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-br from-cyan-500 via-teal-500 to-blue-500 text-white shadow-lg shadow-cyan-200/80 transition group-hover:-translate-y-0.5 group-hover:shadow-cyan-300/80 sm:h-12 sm:w-12">
-              <div className="absolute inset-0 bg-white/20 opacity-0 transition group-hover:opacity-100" />
-              <Microscope size={22} />
+    <>
+      {/* TOP HEADER */}
+      <header className="fixed inset-x-0 top-0 z-50 border-b border-cyan-100/80 bg-white/90 backdrop-blur-2xl">
+        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-3 px-4 sm:h-20 sm:px-6 lg:px-8">
+          {/* Brand */}
+          <NavLink to="/" className="flex min-w-0 items-center gap-3">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-cyan-500 to-teal-500 text-white shadow-lg shadow-cyan-200 sm:h-12 sm:w-12">
+              <Microscope className="h-5 w-5 sm:h-6 sm:w-6" />
             </div>
-            <div className="block min-w-0">
-              <div className="flex items-center gap-2">
-                <span className="text-base font-black tracking-tight text-slate-950 sm:text-lg">MicroSense</span>
-                <span className="hidden rounded-full bg-cyan-50 px-2 py-0.5 text-xs font-bold text-cyan-700 ring-1 ring-cyan-100 xs:inline-flex sm:inline-flex">AI-Cam</span>
-              </div>
-              <div className="mt-0.5 hidden items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.22em] text-slate-400 sm:flex">
-                <Sparkles size={10} className="text-cyan-500" /> Microplastic Monitor
-              </div>
-            </div>
-          </Link>
 
-          <nav className="hidden items-center rounded-2xl border border-slate-200/70 bg-white/75 p-1 shadow-sm md:flex">
-            {navLinks.map(({ to, label, icon: Icon }) => {
-              const active = location.pathname === to;
+            <div className="min-w-0">
+              <h1 className="truncate text-sm font-black tracking-tight text-slate-950 sm:text-xl">
+                MicroSense
+              </h1>
+
+              <p className="hidden text-[10px] font-black uppercase tracking-[0.28em] text-cyan-700 sm:block">
+                Microplastic Monitor
+              </p>
+            </div>
+          </NavLink>
+
+          {/* Desktop Navigation */}
+          <nav className="hidden items-center gap-2 rounded-3xl border border-slate-200 bg-white/80 p-1 shadow-sm lg:flex">
+            {navItems.map((item) => {
+              const Icon = item.icon;
+
               return (
-                <Link
-                  key={to}
-                  to={to}
-                  className={`flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-bold transition-all ${
-                    active
-                      ? "bg-gradient-to-r from-cyan-500 to-teal-500 text-white shadow-md shadow-cyan-200"
-                      : "text-slate-600 hover:bg-cyan-50 hover:text-cyan-700"
-                  }`}
+                <NavLink
+                  key={item.path}
+                  to={item.path}
+                  end={item.path === "/"}
+                  className={({ isActive }) =>
+                    `inline-flex items-center gap-2 rounded-2xl px-5 py-3 text-sm font-black transition ${
+                      isActive
+                        ? "bg-cyan-600 text-white shadow-lg shadow-cyan-200"
+                        : "text-slate-600 hover:bg-cyan-50 hover:text-cyan-700"
+                    }`
+                  }
                 >
-                  <Icon size={15} />
-                  {label}
-                </Link>
+                  <Icon className="h-4 w-4" />
+                  {item.label}
+                </NavLink>
               );
             })}
           </nav>
 
-          <div className="flex items-center gap-2 sm:gap-3">
-            <button
-              onClick={onRefresh}
-              disabled={checking}
-              title="Refresh status"
-              className="rounded-xl border border-slate-200 bg-white p-2.5 text-slate-500 shadow-sm transition hover:-translate-y-0.5 hover:border-cyan-200 hover:bg-cyan-50 hover:text-cyan-700 disabled:opacity-50"
-            >
-              <RefreshCw size={16} className={checking ? "animate-spin" : ""} />
-            </button>
-            <div
-              className={`flex h-10 w-10 items-center justify-center rounded-2xl border shadow-sm sm:hidden ${
-                checking
-                  ? "border-amber-200 bg-amber-50 text-amber-700"
-                  : backendConnected
-                  ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                  : "border-rose-200 bg-rose-50 text-rose-700"
-              }`}
-              title={checking ? "Checking backend" : backendConnected ? "Backend online" : "Backend offline"}
-            >
-              {checking ? <RefreshCw size={15} className="animate-spin" /> : backendConnected ? <Wifi size={15} /> : <WifiOff size={15} />}
-            </div>
-            <div
-              className={`hidden items-center gap-2 rounded-full border px-3 py-2 text-xs font-black shadow-sm sm:flex ${
-                checking
-                  ? "border-amber-200 bg-amber-50 text-amber-700"
-                  : backendConnected
-                  ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                  : "border-rose-200 bg-rose-50 text-rose-700"
-              }`}
-            >
-              <span className={`status-dot ${checking ? "bg-amber-400 animate-pulse" : backendConnected ? "bg-emerald-500 pulse-ring" : "bg-rose-500"}`} />
-              {checking ? "Checking" : backendConnected ? <><Wifi size={12}/> Backend Online</> : <><WifiOff size={12}/> Offline</>}
-            </div>
+          {/* Status Chip */}
+          <div
+            className={`inline-flex shrink-0 items-center gap-2 rounded-2xl border px-3 py-2 text-xs font-black ${statusClass}`}
+            title={`Backend status: ${statusLabel}`}
+          >
+            <StatusIcon
+              className={`h-4 w-4 ${isAnalyzing ? "animate-spin" : ""}`}
+            />
+
+            <span className="hidden sm:inline">{statusLabel}</span>
           </div>
         </div>
+      </header>
 
-        <div className="fixed bottom-3 left-3 right-3 z-50 grid grid-cols-3 gap-2 rounded-[1.7rem] border border-cyan-100 bg-white/88 p-2 shadow-2xl shadow-cyan-950/10 backdrop-blur-2xl md:hidden mobile-bottom-nav">
-          {navLinks.map(({ to, label, icon: Icon }) => {
-            const active = location.pathname === to;
+      {/* MOBILE BOTTOM NAVIGATION */}
+      <nav className="fixed inset-x-0 bottom-0 z-50 border-t border-cyan-100 bg-white/90 px-3 py-2 shadow-[0_-10px_30px_rgba(14,116,144,0.12)] backdrop-blur-2xl lg:hidden">
+        <div className="mx-auto grid max-w-md grid-cols-3 gap-2 rounded-3xl border border-cyan-100 bg-cyan-50/60 p-1">
+          {navItems.map((item) => {
+            const Icon = item.icon;
+
             return (
-              <Link
-                key={to}
-                to={to}
-                className={`flex min-h-[52px] flex-col items-center justify-center gap-1 rounded-2xl px-2 py-2 text-[11px] font-black transition ${
-                  active ? "bg-cyan-600 text-white shadow-md" : "bg-white/70 text-slate-600 ring-1 ring-slate-200"
-                }`}
+              <NavLink
+                key={item.path}
+                to={item.path}
+                end={item.path === "/"}
+                className={({ isActive }) =>
+                  `flex min-h-[58px] flex-col items-center justify-center gap-1 rounded-2xl text-[11px] font-black transition ${
+                    isActive
+                      ? "bg-cyan-600 text-white shadow-lg shadow-cyan-200"
+                      : "text-slate-600 hover:bg-white hover:text-cyan-700"
+                  }`
+                }
               >
-                <Icon size={16} /> <span>{label}</span>
-              </Link>
+                <Icon className="h-5 w-5" />
+                {item.label}
+              </NavLink>
             );
           })}
         </div>
-      </div>
-    </header>
+      </nav>
+    </>
   );
 }
