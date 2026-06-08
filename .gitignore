@@ -44,3 +44,26 @@ Thumbs.db
 
 # Optional: keep model out if too large
 # backend/model/best.pt
+
+# Python virtual environments
+venv/
+.venv/
+yolo_env/
+env/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Uploads / generated files
+uploads/
+backend/uploads/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Environment variables
+.env

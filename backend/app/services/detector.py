@@ -1,14 +1,14 @@
 """
-YOLOv5-based particle detection for MicroSense AI-Cam.
+YOLO26n-based particle detection for MicroSense AI-Cam.
 
-Permanent fix:
-- Try YOLOv5 first.
-- If YOLO / torch.hub fails on Render, do not crash.
-- Automatically use OpenCV fallback detection.
-- Always generate processed image.
-- Always return DetectionResult to samples.py.
-- Always calculate image quality, even when OpenCV fallback is used.
-- Apply Hybrid AI + Image Processing Filter to reduce false positives.
+Updated fix:
+- Uses new YOLO26n model: model/yolo26_best.pt
+- Uses ultralytics YOLO directly, not torch.hub YOLOv5
+- If YOLO26n fails, automatically uses OpenCV fallback detection
+- Always generates processed image
+- Always returns DetectionResult to samples.py
+- Always calculates image quality
+- Applies Hybrid AI + Image Processing Filter to reduce false positives
 """
 
 from __future__ import annotations
@@ -16,12 +16,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List
-import os
-import pathlib
 
 import cv2
 import numpy as np
-import torch
+from ultralytics import YOLO
 
 from app.config import (
     RESIZE_WIDTH,
@@ -38,7 +36,10 @@ from app.services.hybrid_filter import validate_particle
 # ── Paths ─────────────────────────────────────────────────────────────────────
 
 BASE_DIR = Path(__file__).resolve().parents[2]
-MODEL_PATH = BASE_DIR / "model" / "best.pt"
+MODEL_PATH = BASE_DIR / "model" / "yolo26_best.pt"
+
+YOLO_CONFIDENCE = 0.35
+YOLO_IOU = 0.45
 
 
 # ── Data structures ───────────────────────────────────────────────────────────
@@ -100,39 +101,29 @@ _model = None
 
 def get_model():
     """
-    Load YOLOv5 model only once.
+    Load YOLO26n model only once.
 
-    Windows:
-    PosixPath patch is needed only for Windows local machine.
+    The model file must be located at:
+    backend/model/yolo26_best.pt
 
-    Render/Linux:
-    trust_repo=True prevents torch.hub interactive prompt.
+    or depending on your project root:
+    model/yolo26_best.pt
     """
+
     global _model
 
     if _model is None:
+        print("YOLO26 model path:", MODEL_PATH)
+        print("Model exists:", MODEL_PATH.exists())
+
         if not MODEL_PATH.exists():
-            raise FileNotFoundError(f"YOLO model not found at: {MODEL_PATH}")
+            raise FileNotFoundError(f"YOLO26 model not found at: {MODEL_PATH}")
 
-        print("Loading YOLOv5 model from:", MODEL_PATH)
+        print("Loading YOLO26n model from:", MODEL_PATH)
 
-        # This patch is only for Windows local development.
-        # Do not apply it on Render/Linux.
-        if os.name == "nt":
-            pathlib.PosixPath = pathlib.WindowsPath
+        _model = YOLO(str(MODEL_PATH))
 
-        _model = torch.hub.load(
-            "ultralytics/yolov5",
-            "custom",
-            path=str(MODEL_PATH),
-            force_reload=False,
-            trust_repo=True,
-        )
-
-        _model.conf = 0.25
-        _model.iou = 0.45
-
-        print("YOLOv5 model loaded successfully.")
+        print("YOLO26n model loaded successfully.")
 
     return _model
 
@@ -232,12 +223,12 @@ def _classical_cv_detection(
     lap_var: float,
     mean_brightness: float,
     image_path: str,
-    reason: str = "YOLO unavailable",
+    reason: str = "YOLO26n unavailable",
 ) -> DetectionResult:
     """
     OpenCV fallback detector.
 
-    This prevents Render from returning 500 if YOLOv5/torch.hub fails.
+    This prevents Render/local backend from returning 500 if YOLO26n fails.
     It also calculates image quality and applies hybrid validation.
     """
 
@@ -314,7 +305,6 @@ def _classical_cv_detection(
             rejected_detection_count += 1
             rejection_reasons.append(validation.rejection_reason)
 
-            # Rejected candidates are shown in red.
             cv2.rectangle(
                 output_img,
                 (x, y),
@@ -350,7 +340,6 @@ def _classical_cv_detection(
 
         particles.append(particle)
 
-        # Accepted candidates are shown in yellow.
         cv2.rectangle(
             output_img,
             (x, y),
@@ -464,14 +453,14 @@ def analyze_image(image_path: str) -> DetectionResult:
     1. Read image.
     2. Resize image.
     3. Calculate image quality.
-    4. Try YOLOv5 detection.
-    5. If YOLO fails, use OpenCV fallback.
+    4. Try YOLO26n detection.
+    5. If YOLO26n fails, use OpenCV fallback.
     6. Apply hybrid validation filter.
     7. Save processed image.
     8. Return DetectionResult.
     """
 
-    print("USING DETECTOR: YOLOv5 WITH OPENCV FALLBACK + HYBRID FILTER")
+    print("USING DETECTOR: YOLO26n WITH OPENCV FALLBACK + HYBRID FILTER")
 
     img = cv2.imread(str(image_path))
 
@@ -489,9 +478,16 @@ def analyze_image(image_path: str) -> DetectionResult:
         model = get_model()
 
         rgb = cv2.cvtColor(img_resized, cv2.COLOR_BGR2RGB)
-        results = model(rgb)
 
-        detections = results.xyxy[0].cpu().numpy()
+        results = model.predict(
+            source=rgb,
+            conf=YOLO_CONFIDENCE,
+            iou=YOLO_IOU,
+            verbose=False,
+        )
+
+        result = results[0]
+        boxes = result.boxes
 
     except Exception as e:
         return _classical_cv_detection(
@@ -511,94 +507,96 @@ def analyze_image(image_path: str) -> DetectionResult:
     validation_scores: list[float] = []
     rejection_reasons: list[str] = []
 
-    for det in detections:
-        x1, y1, x2, y2, conf, cls = det
+    if boxes is not None:
+        for box in boxes:
+            xyxy = box.xyxy[0].cpu().numpy()
+            conf = float(box.conf[0].cpu().numpy()) if box.conf is not None else 0.0
 
-        x1 = int(round(x1))
-        y1 = int(round(y1))
-        x2 = int(round(x2))
-        y2 = int(round(y2))
+            x1, y1, x2, y2 = xyxy
 
-        width = max(0, x2 - x1)
-        height = max(0, y2 - y1)
-        area = float(width * height)
+            x1 = int(round(x1))
+            y1 = int(round(y1))
+            x2 = int(round(x2))
+            y2 = int(round(y2))
 
-        if width <= 0 or height <= 0:
-            continue
+            width = max(0, x2 - x1)
+            height = max(0, y2 - y1)
+            area = float(width * height)
 
-        raw_detection_count += 1
+            if width <= 0 or height <= 0:
+                continue
 
-        validation = validate_particle(
-            gray=gray,
-            x=x1,
-            y=y1,
-            width=width,
-            height=height,
-            area=area,
-        )
+            raw_detection_count += 1
 
-        validation_scores.append(validation.validation_score)
+            validation = validate_particle(
+                gray=gray,
+                x=x1,
+                y=y1,
+                width=width,
+                height=height,
+                area=area,
+            )
 
-        if not validation.is_valid:
-            rejected_detection_count += 1
-            rejection_reasons.append(validation.rejection_reason)
+            validation_scores.append(validation.validation_score)
 
-            # Rejected candidates are shown in red.
+            if not validation.is_valid:
+                rejected_detection_count += 1
+                rejection_reasons.append(validation.rejection_reason)
+
+                cv2.rectangle(
+                    output_img,
+                    (x1, y1),
+                    (x2, y2),
+                    (0, 0, 255),
+                    1,
+                )
+
+                cv2.putText(
+                    output_img,
+                    "Rejected",
+                    (x1, max(20, y1 - 8)),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.45,
+                    (0, 0, 255),
+                    1,
+                )
+
+                continue
+
+            roi = _safe_crop(gray, x1, y1, x2, y2)
+            brightness = float(np.mean(roi)) if roi.size > 0 else 0.0
+
+            particle = Particle(
+                x=x1,
+                y=y1,
+                width=width,
+                height=height,
+                area=round(area, 2),
+                brightness=round(brightness, 2),
+                size_category=_size_label(area),
+            )
+
+            particles.append(particle)
+
             cv2.rectangle(
                 output_img,
                 (x1, y1),
                 (x2, y2),
-                (0, 0, 255),
-                1,
+                (0, 255, 255),
+                2,
             )
+
+            label = f"Accepted {conf:.2f} | H:{validation.validation_score:.0f}"
 
             cv2.putText(
                 output_img,
-                "Rejected",
+                label,
                 (x1, max(20, y1 - 8)),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 0.45,
-                (0, 0, 255),
+                (0, 255, 255),
                 1,
             )
-
-            continue
-
-        roi = _safe_crop(gray, x1, y1, x2, y2)
-        brightness = float(np.mean(roi)) if roi.size > 0 else 0.0
-
-        particle = Particle(
-            x=x1,
-            y=y1,
-            width=width,
-            height=height,
-            area=round(area, 2),
-            brightness=round(brightness, 2),
-            size_category=_size_label(area),
-        )
-
-        particles.append(particle)
-
-        # Accepted candidates are shown in yellow.
-        cv2.rectangle(
-            output_img,
-            (x1, y1),
-            (x2, y2),
-            (0, 255, 255),
-            2,
-        )
-
-        label = f"Accepted {conf:.2f} | H:{validation.validation_score:.0f}"
-
-        cv2.putText(
-            output_img,
-            label,
-            (x1, max(20, y1 - 8)),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.45,
-            (0, 255, 255),
-            1,
-        )
 
     accepted_detection_count = len(particles)
 
@@ -617,7 +615,7 @@ def analyze_image(image_path: str) -> DetectionResult:
 
     cv2.putText(
         output_img,
-        f"YOLO Accepted: {accepted_detection_count}/{raw_detection_count}",
+        f"YOLO26 Accepted: {accepted_detection_count}/{raw_detection_count}",
         (10, 25),
         cv2.FONT_HERSHEY_SIMPLEX,
         0.7,
@@ -647,7 +645,7 @@ def analyze_image(image_path: str) -> DetectionResult:
 
     proc_filename = generate_unique_filename(
         Path(image_path).name,
-        prefix="yolo_processed_",
+        prefix="yolo26_processed_",
     )
 
     proc_path = IMAGE_UPLOAD_DIR / proc_filename
@@ -658,6 +656,8 @@ def analyze_image(image_path: str) -> DetectionResult:
         raise ValueError(f"Failed to save processed image at: {proc_path}")
 
     print("DETECTOR.PY FINAL processed_path:", proc_path)
+    print("Detector used: YOLO26n")
+    print("Model path:", MODEL_PATH)
     print("Raw detection count:", raw_detection_count)
     print("Accepted detection count:", accepted_detection_count)
     print("Rejected detection count:", rejected_detection_count)
@@ -696,13 +696,13 @@ def analyze_image(image_path: str) -> DetectionResult:
 
 def analyze_video(video_path: str, frame_interval: int = 10) -> dict:
     """
-    Analyze video using YOLOv5 frame-by-frame.
+    Analyze video using YOLO26n frame-by-frame.
 
-    If YOLO fails for video, this will still raise error.
-    Main permanent fix is for image upload route.
+    If YOLO26n fails for video, this will raise an error.
+    Main fallback protection is for image upload route.
     """
 
-    print("USING VIDEO DETECTOR: YOLOv5 VERSION")
+    print("USING VIDEO DETECTOR: YOLO26n VERSION")
 
     cap = cv2.VideoCapture(str(video_path))
 
@@ -730,53 +730,64 @@ def analyze_video(video_path: str, frame_interval: int = 10) -> dict:
             lap_var = _laplacian_variance(gray)
             mean_brightness = float(np.mean(gray))
 
-            results = model(rgb)
-            detections = results.xyxy[0].cpu().numpy()
+            results = model.predict(
+                source=rgb,
+                conf=YOLO_CONFIDENCE,
+                iou=YOLO_IOU,
+                verbose=False,
+            )
+
+            result = results[0]
+            boxes = result.boxes
 
             out_frame = resized.copy()
             areas = []
             brightnesses = []
             count = 0
 
-            for det in detections:
-                x1, y1, x2, y2, conf, cls = det
+            if boxes is not None:
+                for box in boxes:
+                    xyxy = box.xyxy[0].cpu().numpy()
+                    conf = float(box.conf[0].cpu().numpy()) if box.conf is not None else 0.0
 
-                x1 = int(round(x1))
-                y1 = int(round(y1))
-                x2 = int(round(x2))
-                y2 = int(round(y2))
+                    x1, y1, x2, y2 = xyxy
 
-                width = max(0, x2 - x1)
-                height = max(0, y2 - y1)
-                area = float(width * height)
+                    x1 = int(round(x1))
+                    y1 = int(round(y1))
+                    x2 = int(round(x2))
+                    y2 = int(round(y2))
 
-                if width <= 0 or height <= 0:
-                    continue
+                    width = max(0, x2 - x1)
+                    height = max(0, y2 - y1)
+                    area = float(width * height)
 
-                roi = _safe_crop(gray, x1, y1, x2, y2)
-                brightness = float(np.mean(roi)) if roi.size > 0 else 0.0
+                    if width <= 0 or height <= 0:
+                        continue
 
-                areas.append(area)
-                brightnesses.append(brightness)
-                count += 1
+                    roi = _safe_crop(gray, x1, y1, x2, y2)
+                    brightness = float(np.mean(roi)) if roi.size > 0 else 0.0
 
-                cv2.rectangle(
-                    out_frame,
-                    (x1, y1),
-                    (x2, y2),
-                    (0, 255, 255),
-                    2,
-                )
+                    areas.append(area)
+                    brightnesses.append(brightness)
+                    count += 1
 
-                cv2.putText(
-                    out_frame,
-                    f"{conf:.2f}",
-                    (x1, max(20, y1 - 8)),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.5,
-                    (0, 255, 255),
-                    2,
-                )
+                    cv2.rectangle(
+                        out_frame,
+                        (x1, y1),
+                        (x2, y2),
+                        (0, 255, 255),
+                        2,
+                    )
+
+                    cv2.putText(
+                        out_frame,
+                        f"{conf:.2f}",
+                        (x1, max(20, y1 - 8)),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.5,
+                        (0, 255, 255),
+                        2,
+                    )
 
             frame_results.append(
                 {
@@ -792,7 +803,7 @@ def analyze_video(video_path: str, frame_interval: int = 10) -> dict:
             if not preview_saved:
                 cv2.putText(
                     out_frame,
-                    f"YOLO Frame {frame_index} | Particles: {count}",
+                    f"YOLO26 Frame {frame_index} | Particles: {count}",
                     (10, 25),
                     cv2.FONT_HERSHEY_SIMPLEX,
                     0.7,
@@ -802,7 +813,7 @@ def analyze_video(video_path: str, frame_interval: int = 10) -> dict:
 
                 fname = generate_unique_filename(
                     Path(video_path).name,
-                    prefix="yolo_preview_",
+                    prefix="yolo26_preview_",
                 )
 
                 preview_path = str(IMAGE_UPLOAD_DIR / fname)
