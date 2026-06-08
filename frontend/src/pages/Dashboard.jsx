@@ -2,33 +2,99 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { getLatestSample, getSamples, formatNumber } from '../api';
 import { icons, PageHero, RiskBadge, StatCard } from '../components/ui';
+import HardwareScanPanel from '../components/HardwareScanPanel';
 
-const { Activity, BarChart3, Database, Gauge, ImageIcon, Microscope, ShieldCheck, Waves, Zap } = icons;
+const {
+  Activity,
+  BarChart3,
+  Database,
+  Gauge,
+  ImageIcon,
+  Microscope,
+  ShieldCheck,
+  Waves,
+  Zap,
+} = icons;
 
 export default function Dashboard({ backendOnline }) {
   const [latestSample, setLatestSample] = useState(null);
   const [samples, setSamples] = useState([]);
   const [loading, setLoading] = useState(true);
 
+  async function loadDashboardData() {
+    setLoading(true);
+
+    try {
+      const [latest, list] = await Promise.all([
+        getLatestSample(),
+        getSamples({ limit: 8 }),
+      ]);
+
+      setLatestSample(latest);
+      setSamples(Array.isArray(list) ? list : []);
+    } catch (error) {
+      console.error('Dashboard load error:', error);
+      setLatestSample(null);
+      setSamples([]);
+    } finally {
+      setLoading(false);
+    }
+  }
+
   useEffect(() => {
     let mounted = true;
+
     async function load() {
       setLoading(true);
-      const [latest, list] = await Promise.all([getLatestSample(), getSamples({ limit: 8 })]);
-      if (mounted) {
-        setLatestSample(latest);
-        setSamples(Array.isArray(list) ? list : []);
-        setLoading(false);
+
+      try {
+        const [latest, list] = await Promise.all([
+          getLatestSample(),
+          getSamples({ limit: 8 }),
+        ]);
+
+        if (mounted) {
+          setLatestSample(latest);
+          setSamples(Array.isArray(list) ? list : []);
+        }
+      } catch (error) {
+        console.error('Dashboard load error:', error);
+
+        if (mounted) {
+          setLatestSample(null);
+          setSamples([]);
+        }
+      } finally {
+        if (mounted) {
+          setLoading(false);
+        }
       }
     }
+
     load();
-    return () => { mounted = false; };
+
+    return () => {
+      mounted = false;
+    };
   }, []);
 
-  const totalSamples = samples.length || latestSample?.id || latestSample?.sample_id || 0;
-  const latestAccepted = latestSample?.accepted_detection_count ?? latestSample?.detected_particles ?? 0;
-  const msmi = latestSample?.msmi_score ?? latestSample?.mpi_score ?? '—';
-  const risk = latestSample?.monitoring_risk_level || 'No data';
+  const totalSamples =
+    samples.length || latestSample?.id || latestSample?.sample_id || 0;
+
+  const latestAccepted =
+    latestSample?.accepted_detection_count ??
+    latestSample?.detected_particles ??
+    0;
+
+  const msmi =
+    latestSample?.msmi_score ??
+    latestSample?.mpi_score ??
+    '—';
+
+  const risk =
+    latestSample?.monitoring_risk_level ||
+    latestSample?.risk_level ||
+    'No data';
 
   return (
     <>
@@ -43,17 +109,55 @@ export default function Dashboard({ backendOnline }) {
       />
 
       <div className="bento-grid mb-8">
-        <div className="col-span-4 md:col-span-3"><StatCard label="Total Samples" value={totalSamples} helper={loading ? 'Syncing database' : 'Samples available'} icon={Database} /></div>
-        <div className="col-span-4 md:col-span-3"><StatCard label="Latest Detections" value={latestAccepted} helper="Accepted candidates" icon={Zap} /></div>
-        <div className="col-span-4 md:col-span-3"><StatCard label="MSMI Score" value={msmi} helper="Monitoring index" icon={Gauge} tone="green" /></div>
+        <div className="col-span-4 md:col-span-3">
+          <StatCard
+            label="Total Samples"
+            value={totalSamples}
+            helper={loading ? 'Syncing database' : 'Samples available'}
+            icon={Database}
+          />
+        </div>
+
+        <div className="col-span-4 md:col-span-3">
+          <StatCard
+            label="Latest Detections"
+            value={latestAccepted}
+            helper="Accepted candidates"
+            icon={Zap}
+          />
+        </div>
+
+        <div className="col-span-4 md:col-span-3">
+          <StatCard
+            label="MSMI Score"
+            value={msmi}
+            helper="Monitoring index"
+            icon={Gauge}
+            tone="green"
+          />
+        </div>
+
         <div className="col-span-4 md:col-span-3 stitch-card p-5">
           <div className="mb-4 flex items-start justify-between gap-3">
-            <span className="text-[11px] font-extrabold uppercase tracking-wide text-on-surface-variant">Current Risk</span>
+            <span className="text-[11px] font-extrabold uppercase tracking-wide text-on-surface-variant">
+              Current Risk
+            </span>
             <ShieldCheck className="h-5 w-5 text-primary opacity-70" />
           </div>
-          <div className="font-display text-3xl font-bold tracking-tight text-on-surface">{risk}</div>
-          <div className="mt-3"><RiskBadge monitoring_risk_level={risk} /></div>
+
+          <div className="font-display text-3xl font-bold tracking-tight text-on-surface">
+            {risk}
+          </div>
+
+          <div className="mt-3">
+            <RiskBadge monitoring_risk_level={risk} />
+          </div>
         </div>
+      </div>
+
+      {/* Hardware Scan Panel */}
+      <div className="mb-8">
+        <HardwareScanPanel onScanComplete={loadDashboardData} />
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[1.35fr_.65fr]">
@@ -61,24 +165,53 @@ export default function Dashboard({ backendOnline }) {
           <div className="border-b border-outline-variant px-5 py-4">
             <div className="flex items-center justify-between gap-4">
               <div>
-                <h3 className="font-display text-xl font-bold">Latest Detection Overview</h3>
-                <p className="mt-1 text-sm text-on-surface-variant">Original sample preview and processed detection output.</p>
+                <h3 className="font-display text-xl font-bold">
+                  Latest Detection Overview
+                </h3>
+                <p className="mt-1 text-sm text-on-surface-variant">
+                  Original sample preview and processed detection output.
+                </p>
               </div>
-              <Link to="/results" className="btn-secondary hidden sm:inline-flex">Open Results</Link>
+
+              <Link to="/results" className="btn-secondary hidden sm:inline-flex">
+                Open Results
+              </Link>
             </div>
           </div>
+
           {latestSample ? (
             <div className="grid gap-4 p-5 lg:grid-cols-2">
-              <ImagePanel title="Original Sample" url={latestSample.original_image_url} icon={ImageIcon} />
-              <ImagePanel title="Processed Output" url={latestSample.processed_image_url} icon={Microscope} />
+              <ImagePanel
+                title="Original Sample"
+                url={
+                  latestSample.original_image_url ||
+                  latestSample.captured_image_url
+                }
+                icon={ImageIcon}
+              />
+
+              <ImagePanel
+                title="Processed Output"
+                url={latestSample.processed_image_url}
+                icon={Microscope}
+              />
             </div>
           ) : (
             <div className="p-5">
               <div className="rounded-xl border border-dashed border-outline-variant bg-surface-container-low p-10 text-center">
                 <Microscope className="mx-auto mb-4 h-12 w-12 text-primary" />
-                <h4 className="font-display text-xl font-bold">No samples analyzed yet</h4>
-                <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-on-surface-variant">Upload a water sample image to begin AI-assisted screening.</p>
-                <Link to="/analyze" className="btn-primary mt-5">Start Analysis</Link>
+
+                <h4 className="font-display text-xl font-bold">
+                  No samples analyzed yet
+                </h4>
+
+                <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-on-surface-variant">
+                  Upload a water sample image or use the hardware scan panel to begin AI-assisted screening.
+                </p>
+
+                <Link to="/analyze" className="btn-primary mt-5">
+                  Start Analysis
+                </Link>
               </div>
             </div>
           )}
@@ -87,16 +220,45 @@ export default function Dashboard({ backendOnline }) {
         <aside className="space-y-6">
           <div className="stitch-card p-5">
             <h3 className="font-display text-lg font-bold">Detection Engine</h3>
+
             <div className="mt-4 space-y-3">
-              <StatusRow label="Backend API" value={backendOnline ? 'Connected' : 'Offline'} ok={backendOnline} />
+              <StatusRow
+                label="Backend API"
+                value={backendOnline ? 'Connected' : 'Offline'}
+                ok={backendOnline}
+              />
               <StatusRow label="AI Model" value="YOLO26n" ok />
               <StatusRow label="Hybrid Validation" value="Enabled" ok />
+              <StatusRow label="Hardware Scan" value="Enabled" ok />
               <StatusRow label="PDF Reports" value="Available" ok />
             </div>
           </div>
+
           <div className="stitch-card p-5">
-            <h3 className="font-display text-lg font-bold">Preliminary Screening Note</h3>
-            <p className="mt-3 text-sm leading-6 text-on-surface-variant">Results indicate visually detected microplastic-like particle candidates based on optical features such as size, contrast, shape, edge clarity, and brightness.</p>
+            <h3 className="font-display text-lg font-bold">
+              Hardware Integration
+            </h3>
+
+            <div className="mt-4 space-y-3">
+              <StatusRow label="Controller" value="ESP32" ok />
+              <StatusRow label="Camera" value="USB Microscope" ok />
+              <StatusRow label="OLED Display" value="Connected" ok />
+              <StatusRow label="UV Control" value="GPIO 26" ok />
+              <StatusRow label="Buzzer" value="GPIO 13" ok />
+            </div>
+          </div>
+
+          <div className="stitch-card p-5">
+            <h3 className="font-display text-lg font-bold">
+              Preliminary Screening Note
+            </h3>
+
+            <p className="mt-3 text-sm leading-6 text-on-surface-variant">
+              Results indicate visually detected microplastic-like particle
+              candidates based on optical features such as size, contrast,
+              shape, edge clarity, and brightness. Chemical polymer confirmation
+              requires FTIR/Raman or certified laboratory analysis.
+            </p>
           </div>
         </aside>
       </div>
@@ -111,8 +273,19 @@ function ImagePanel({ title, url, icon: Icon }) {
         <Icon className="h-4 w-4 text-primary" />
         <span className="text-sm font-extrabold">{title}</span>
       </div>
+
       <div className="flex min-h-[280px] items-center justify-center p-4">
-        {url ? <img src={url} alt={title} className="max-h-[320px] rounded-lg object-contain shadow-sm" /> : <span className="text-sm text-on-surface-variant">Image not available</span>}
+        {url ? (
+          <img
+            src={url}
+            alt={title}
+            className="max-h-[320px] rounded-lg object-contain shadow-sm"
+          />
+        ) : (
+          <span className="text-sm text-on-surface-variant">
+            Image not available
+          </span>
+        )}
       </div>
     </div>
   );
@@ -121,8 +294,17 @@ function ImagePanel({ title, url, icon: Icon }) {
 function StatusRow({ label, value, ok }) {
   return (
     <div className="flex items-center justify-between rounded-lg border border-outline-variant bg-surface-container-low px-3 py-2">
-      <span className="text-sm font-semibold text-on-surface-variant">{label}</span>
-      <span className={`text-sm font-extrabold ${ok ? 'text-emerald-700' : 'text-red-700'}`}>{value}</span>
+      <span className="text-sm font-semibold text-on-surface-variant">
+        {label}
+      </span>
+
+      <span
+        className={`text-sm font-extrabold ${
+          ok ? 'text-emerald-700' : 'text-red-700'
+        }`}
+      >
+        {value}
+      </span>
     </div>
   );
 }

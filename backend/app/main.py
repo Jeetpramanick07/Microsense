@@ -10,6 +10,7 @@ from app.config import CORS_ORIGINS, UPLOAD_DIR, create_dirs
 from app.database import init_db
 from app.routes import health, samples, analytics, camera, device
 from app.db_migration import run_safe_migrations
+from app.routes import hardware
 
 # Ensure upload/report directories exist before anything else
 create_dirs()
@@ -52,6 +53,7 @@ app.include_router(samples.router, prefix=API_PREFIX)
 app.include_router(analytics.router, prefix=API_PREFIX)
 app.include_router(camera.router, prefix=API_PREFIX)
 app.include_router(device.router, prefix=API_PREFIX)
+app.include_router(hardware.router)
 
 
 @app.get("/", include_in_schema=False)

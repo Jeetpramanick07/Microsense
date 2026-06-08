@@ -1,4 +1,5 @@
-export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000';
+export const API_BASE_URL =
+  import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000';
 
 async function safeFetch(url, options = {}) {
   try {
@@ -11,8 +12,13 @@ async function safeFetch(url, options = {}) {
 
 export function getMediaUrl(path) {
   if (!path) return '';
-  if (String(path).startsWith('http')) return path;
+
+  if (String(path).startsWith('http')) {
+    return path;
+  }
+
   const cleanPath = String(path).startsWith('/') ? path : `/${path}`;
+
   return `${API_BASE_URL}${cleanPath}`;
 }
 
@@ -23,6 +29,7 @@ export async function checkBackendConnection() {
       cache: 'no-store',
       headers: { accept: 'application/json' },
     });
+
     return response.ok;
   } catch (error) {
     console.error('Backend health check failed:', error);
@@ -37,8 +44,15 @@ export async function getLatestSample() {
       cache: 'no-store',
       headers: { accept: 'application/json' },
     });
-    if (response.status === 404 || response.status === 204) return null;
-    if (!response.ok) return null;
+
+    if (response.status === 404 || response.status === 204) {
+      return null;
+    }
+
+    if (!response.ok) {
+      return null;
+    }
+
     return await response.json();
   } catch (error) {
     console.error('Failed to fetch latest sample:', error);
@@ -49,16 +63,29 @@ export async function getLatestSample() {
 export async function getSamples(params = {}) {
   try {
     const url = new URL(`${API_BASE_URL}/api/samples/`);
-    if (params.risk_level) url.searchParams.set('risk_level', params.risk_level);
-    if (params.source) url.searchParams.set('source', params.source);
-    if (params.limit) url.searchParams.set('limit', params.limit);
+
+    if (params.risk_level) {
+      url.searchParams.set('risk_level', params.risk_level);
+    }
+
+    if (params.source) {
+      url.searchParams.set('source', params.source);
+    }
+
+    if (params.limit) {
+      url.searchParams.set('limit', params.limit);
+    }
 
     const response = await fetch(url.toString(), {
       method: 'GET',
       cache: 'no-store',
       headers: { accept: 'application/json' },
     });
-    if (!response.ok) return [];
+
+    if (!response.ok) {
+      return [];
+    }
+
     return await response.json();
   } catch (error) {
     console.error('Failed to fetch samples:', error);
@@ -67,28 +94,47 @@ export async function getSamples(params = {}) {
 }
 
 export async function getSampleById(sample_id) {
-  if (!sample_id) throw new Error('Sample ID is required');
+  if (!sample_id) {
+    throw new Error('Sample ID is required');
+  }
+
   const response = await safeFetch(`${API_BASE_URL}/api/samples/${sample_id}`, {
     method: 'GET',
     cache: 'no-store',
     headers: { accept: 'application/json' },
   });
-  if (!response.ok) throw new Error(`Failed to fetch sample with ID ${sample_id}`);
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch sample with ID ${sample_id}`);
+  }
+
   return response.json();
 }
 
-export async function analyzeSample({ file, sample_source, chamber_volume_ml, notes, detector_model = 'yolo26' }) {
-  if (!file) throw new Error('Please select a sample image');
+export async function analyzeSample({
+  file,
+  sample_source,
+  chamber_volume_ml,
+  notes,
+  detector_model = 'yolo26',
+}) {
+  if (!file) {
+    throw new Error('Please select a sample image');
+  }
 
   const formData = new FormData();
   formData.append('file', file);
   formData.append('sample_source', sample_source || 'Manual Upload');
   formData.append('chamber_volume_ml', chamber_volume_ml || 50);
-  if (notes) formData.append('notes', notes);
 
-  const endpoint = detector_model === 'yolov5'
-    ? '/api/samples/analyze-image'
-    : '/api/samples/analyze-image-yolo26';
+  if (notes) {
+    formData.append('notes', notes);
+  }
+
+  const endpoint =
+    detector_model === 'yolov5'
+      ? '/api/samples/analyze-image'
+      : '/api/samples/analyze-image-yolo26';
 
   const response = await safeFetch(`${API_BASE_URL}${endpoint}`, {
     method: 'POST',
@@ -98,6 +144,7 @@ export async function analyzeSample({ file, sample_source, chamber_volume_ml, no
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => null);
+
     throw new Error(
       typeof errorData?.detail === 'string'
         ? errorData.detail
@@ -106,49 +153,140 @@ export async function analyzeSample({ file, sample_source, chamber_volume_ml, no
         : `Image analysis failed with status ${response.status}`
     );
   }
+
   return response.json();
 }
 
 export async function downloadSampleReport(sample_id) {
-  if (!sample_id) throw new Error('Sample ID is required to download report');
+  if (!sample_id) {
+    throw new Error('Sample ID is required to download report');
+  }
+
   const response = await fetch(`${API_BASE_URL}/api/samples/${sample_id}/report`, {
     method: 'GET',
     cache: 'no-store',
     headers: { accept: 'application/pdf' },
   });
-  if (!response.ok) throw new Error('Failed to generate PDF report');
+
+  if (!response.ok) {
+    throw new Error('Failed to generate PDF report');
+  }
+
   const blob = await response.blob();
   const url = window.URL.createObjectURL(blob);
+
   const link = document.createElement('a');
   link.href = url;
   link.download = `microsense_sample_${sample_id}_report.pdf`;
+
   document.body.appendChild(link);
   link.click();
   link.remove();
+
   window.URL.revokeObjectURL(url);
+
   return true;
 }
 
 export function getDetectorLabel(sample) {
-  if (!sample) return 'YOLO26n + Hybrid Filter';
-  const notes = String(sample.notes || '').toLowerCase();
-  const processed_image_url = String(sample.processed_image_url || '').toLowerCase();
-  if (notes.includes('yolo26') || notes.includes('yolo26n') || processed_image_url.includes('yolo26')) {
+  if (!sample) {
     return 'YOLO26n + Hybrid Filter';
   }
+
+  const notes = String(sample.notes || '').toLowerCase();
+  const processed_image_url = String(sample.processed_image_url || '').toLowerCase();
+
+  if (
+    notes.includes('yolo26') ||
+    notes.includes('yolo26n') ||
+    processed_image_url.includes('yolo26')
+  ) {
+    return 'YOLO26n + Hybrid Filter';
+  }
+
   return 'YOLOv5 Baseline';
 }
 
 export function formatNumber(value, decimals = 2) {
-  if (value === null || value === undefined || value === '') return '—';
-  if (typeof value === 'number') return Number.isInteger(value) ? String(value) : value.toFixed(decimals);
+  if (value === null || value === undefined || value === '') {
+    return '—';
+  }
+
+  if (typeof value === 'number') {
+    return Number.isInteger(value) ? String(value) : value.toFixed(decimals);
+  }
+
   return value;
 }
 
 export function getRiskTone(monitoring_risk_level) {
   const risk = String(monitoring_risk_level || '').toLowerCase();
+
   if (risk.includes('low')) return 'low';
   if (risk.includes('moderate')) return 'moderate';
   if (risk.includes('high')) return 'high';
+
   return 'unknown';
+}
+
+/* -------------------------------------------------------------------------- */
+/* Hardware API                                                               */
+/* -------------------------------------------------------------------------- */
+
+export async function getHardwareStatus() {
+  const response = await fetch(`${API_BASE_URL}/api/hardware/status`, {
+    method: 'GET',
+    cache: 'no-store',
+    headers: { accept: 'application/json' },
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to fetch hardware status');
+  }
+
+  return response.json();
+}
+
+export async function startHardwareScan() {
+  const response = await fetch(`${API_BASE_URL}/api/hardware/request-scan`, {
+    method: 'POST',
+    cache: 'no-store',
+    headers: {
+      accept: 'application/json',
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => null);
+    throw new Error(errorData?.detail || 'Failed to request hardware scan');
+  }
+
+  return response.json();
+}
+
+export async function getLatestHardwareResult() {
+  const response = await fetch(`${API_BASE_URL}/api/hardware/latest-result`, {
+    method: 'GET',
+    cache: 'no-store',
+    headers: { accept: 'application/json' },
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to fetch latest hardware result');
+  }
+
+  return response.json();
+}
+
+export function convertWindowsPathToUrl(path) {
+  if (!path) return '';
+
+  if (String(path).startsWith('http')) {
+    return path;
+  }
+
+  const filename = String(path).split('\\').pop().split('/').pop();
+
+  return `${API_BASE_URL}/uploads/images/${filename}`;
 }
