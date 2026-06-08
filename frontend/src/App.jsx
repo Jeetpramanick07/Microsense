@@ -1,96 +1,54 @@
-import { useEffect, useState } from "react";
-import { Routes, Route } from "react-router-dom";
+import { useEffect, useState } from 'react';
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import { checkBackendConnection } from './api';
+import { AppShell } from './components/ui';
+import Analyze from './pages/Analyze';
+import Dashboard from './pages/Dashboard';
+import History from './pages/History';
+import Reports from './pages/Reports';
+import Results from './pages/Results';
+import Status from './pages/Status';
 
-import Navbar from "./components/Navbar";
-import Dashboard from "./components/Dashboard";
-import UploadPage from "./components/UploadPage";
-import HistoryPage from "./components/HistoryPage";
-
-import { checkBackendConnection } from "./api";
+const titles = {
+  '/': 'Dashboard',
+  '/analyze': 'Analyze Sample',
+  '/results': 'Analysis Results',
+  '/history': 'Sample History',
+  '/reports': 'Reports Archive',
+  '/status': 'System Status',
+};
 
 export default function App() {
+  const location = useLocation();
   const [backendOnline, setBackendOnline] = useState(false);
   const [backendChecking, setBackendChecking] = useState(true);
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [latestResult, setLatestResult] = useState(null);
 
-  const checkBackend = async () => {
-    try {
-      setBackendChecking(true);
-      const online = await checkBackendConnection();
-      setBackendOnline(online);
-    } catch {
-      setBackendOnline(false);
-    } finally {
-      setBackendChecking(false);
-    }
+  const refreshBackend = async () => {
+    setBackendChecking(true);
+    const online = await checkBackendConnection();
+    setBackendOnline(online);
+    setBackendChecking(false);
   };
 
   useEffect(() => {
-    checkBackend();
-
-    const interval = setInterval(() => {
-      if (!isAnalyzing) {
-        checkBackend();
-      }
-    }, 30000);
-
+    refreshBackend();
+    const interval = setInterval(refreshBackend, 30000);
     return () => clearInterval(interval);
-  }, [isAnalyzing]);
-
-  const systemStatus = {
-    backendConnected: backendOnline,
-    backendChecking: backendChecking,
-    databaseReady: backendOnline,
-    latestSampleSync: backendOnline,
-    yolo26Ready: backendOnline,
-    cameraReady: "optional",
-    esp32Ready: "optional",
-    oledReady: "optional",
-    isAnalyzing: isAnalyzing,
-  };
+  }, []);
 
   return (
-    <div className="min-h-screen overflow-x-hidden bg-gradient-to-br from-cyan-50 via-white to-teal-50 pt-16 pb-24 text-slate-900 sm:pt-20 lg:pb-8">
-      <Navbar
-        backendOnline={backendOnline}
-        backendChecking={backendChecking}
-        isAnalyzing={isAnalyzing}
-      />
-
+    <AppShell title={titles[location.pathname] || 'MicroSense AI-Cam'} backendOnline={backendOnline} backendChecking={backendChecking}>
       <Routes>
-        <Route
-          path="/"
-          element={
-            <Dashboard
-              systemStatus={systemStatus}
-              backendOnline={backendOnline}
-              backendChecking={backendChecking}
-              refreshBackend={checkBackend}
-            />
-          }
-        />
-
-        <Route
-          path="/upload"
-          element={
-            <UploadPage
-              setGlobalAnalyzing={setIsAnalyzing}
-              backendOnline={backendOnline}
-              refreshBackend={checkBackend}
-            />
-          }
-        />
-
-        <Route
-          path="/history"
-          element={
-            <HistoryPage
-              backendOnline={backendOnline}
-              refreshBackend={checkBackend}
-            />
-          }
-        />
+        <Route path="/" element={<Dashboard backendOnline={backendOnline} />} />
+        <Route path="/analyze" element={<Analyze setLatestResult={setLatestResult} />} />
+        <Route path="/results" element={<Results latestResult={latestResult} />} />
+        <Route path="/history" element={<History />} />
+        <Route path="/reports" element={<Reports />} />
+        <Route path="/status" element={<Status backendOnline={backendOnline} backendChecking={backendChecking} refreshBackend={refreshBackend} />} />
+        <Route path="/upload" element={<Navigate to="/analyze" replace />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
-    </div>
+    </AppShell>
   );
 }
