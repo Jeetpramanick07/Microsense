@@ -143,7 +143,7 @@ def hardware_scan(db: Session = Depends(get_db)):
         chamber_volume_ml = 50.0
         notes = "Captured using ESP32-triggered hardware scan with USB microscope and YOLO26n"
 
-        captured_image_path = capture_frame(camera_index=0, warmup_frames=20)
+        captured_image_path = capture_frame(camera_index=2, warmup_frames=60)
 
         result = detector_yolo26.analyze_image_yolo26(str(captured_image_path))
 
